@@ -1,0 +1,742 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101214">
+<title>Pannello casa</title>
+<style>
+  :root {
+    --bg: #101214; --card: #181b1f; --line: #2a2f35; --text: #e8eaed; --muted: #9aa1a9;
+    --ok: #2ecc71; --warn: #f5b300; --bad: #ff4d4d; --accent: #4f8cff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 520px; margin: 0 auto; padding: 16px 16px 40px; }
+  h1 { font-size: 18px; margin: 4px 0 14px; font-weight: 600; letter-spacing: .2px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px;
+          background: var(--card); border: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
+  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
+  .preview { display: grid; place-items: center; background: #000; border-radius: 14px; padding: 14px;
+             border: 1px solid var(--line); margin-bottom: 14px; }
+  canvas { width: min(100%, 320px); aspect-ratio: 1; image-rendering: pixelated; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  button { flex: 1 1 140px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line);
+           background: var(--card); color: var(--text); font: inherit; font-weight: 600; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; }
+  details { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 4px 14px;
+            margin-bottom: 12px; }
+  summary { padding: 10px 0; font-weight: 600; cursor: pointer; }
+  label { display: block; margin: 10px 0 4px; color: var(--muted); font-size: 13px; }
+  input[type=text], input[type=number], input[type=time] {
+    width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); font: inherit; }
+  input[type=range] { width: 100%; }
+  .inline { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+  .inline label { margin: 0; color: var(--text); font-size: 14px; }
+  .days { display: flex; gap: 6px; flex-wrap: wrap; }
+  .days label { display: inline-flex; gap: 4px; margin: 0; color: var(--text); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .log { font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; color: var(--muted); white-space: pre-wrap;
+         max-height: 220px; overflow: auto; padding-bottom: 10px; }
+  .note { color: var(--muted); font-size: 13px; margin: 6px 0 12px; }
+  .warnbox { background: #2a1f0a; border: 1px solid #5a4210; color: #f3d18a; padding: 10px 12px;
+             border-radius: 10px; margin-bottom: 12px; font-size: 14px; display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Pannello agenti · casa</h1>
+  <div class="warnbox" id="warn"></div>
+  <div class="chips">
+    <span class="chip"><span class="dot" id="dPanel"></span><span id="tPanel">Pannello non collegato</span></span>
+    <span class="chip"><span class="dot" id="dData"></span><span id="tData">Nessun dato</span></span>
+    <span class="chip"><span class="dot" id="dPower"></span><span id="tPower">Acceso</span></span>
+  </div>
+  <div class="preview"><canvas id="screen" width="32" height="32"></canvas></div>
+  <div class="row">
+    <button class="primary" id="btnConnect">Collega pannello</button>
+    <button id="btnPower">Spegni</button>
+  </div>
+  <label for="bright">Luminosità <span id="brightVal"></span></label>
+  <input type="range" id="bright" min="5" max="100" step="5">
+  <p class="note">Tieni questa pagina aperta in primo piano con il telefono in carica: Android sospende il
+    Bluetooth delle pagine in background. Lo schermo resta acceso da solo mentre il pannello è collegato.</p>
+
+  <details id="setup">
+    <summary>Impostazioni</summary>
+    <label for="pair">Codice di abbinamento (dal PC: python pannello_agenti.py --pair)</label>
+    <input type="text" id="pair" autocomplete="off" spellcheck="false" placeholder="pannello-….…">
+    <label for="server">Server relay</label>
+    <input type="text" id="server" placeholder="https://ntfy.sh">
+    <div class="grid2">
+      <div><label for="rotate">Secondi per pagina</label><input type="number" id="rotate" min="5" max="120"></div>
+      <div><label for="speed">Velocità mascotte</label><input type="number" id="speed" min="0.25" max="3" step="0.1"></div>
+    </div>
+    <div class="inline"><input type="checkbox" id="mascot"><label for="mascot">Mostra la mascotte</label></div>
+    <div class="inline"><input type="checkbox" id="schedOn"><label for="schedOn">Orario di accensione</label></div>
+    <div class="days" id="days"></div>
+    <div class="grid2">
+      <div><label for="tOn">Accendi alle</label><input type="time" id="tOn"></div>
+      <div><label for="tOff">Spegni alle</label><input type="time" id="tOff"></div>
+    </div>
+    <div class="row" style="margin-top:12px"><button id="btnSave">Salva</button></div>
+  </details>
+
+  <details>
+    <summary>Registro</summary>
+    <div class="log" id="log"></div>
+  </details>
+</main>
+
+<!-- ======================= NUCLEO (nessuna dipendenza dal browser) ======================= -->
+<script id="core">
+"use strict";
+const W = 32, H = 32;
+const BLACK = [0, 0, 0], WHITE = [215, 215, 215], YELLOW = [255, 185, 0], GREEN = [0, 215, 70],
+      BLUE = [30, 110, 255], RED = [255, 35, 35], GRAY = [95, 95, 95], BAR_BG = [22, 22, 22];
+const dim = (c, f) => c.map(v => Math.trunc(v * f));
+
+const FONT = {
+  "0": ["###","#.#","#.#","#.#","###"], "1": [".#.","##.",".#.",".#.","###"], "2": ["###","..#","###","#..","###"],
+  "3": ["###","..#",".##","..#","###"], "4": ["#.#","#.#","###","..#","..#"], "5": ["###","#..","###","..#","###"],
+  "6": ["###","#..","###","#.#","###"], "7": ["###","..#","..#",".#.",".#."], "8": ["###","#.#","###","#.#","###"],
+  "9": ["###","#.#","###","..#","###"], "A": [".#.","#.#","###","#.#","#.#"], "B": ["##.","#.#","##.","#.#","##."],
+  "C": [".##","#..","#..","#..",".##"], "D": ["##.","#.#","#.#","#.#","##."], "E": ["###","#..","##.","#..","###"],
+  "F": ["###","#..","##.","#..","#.."], "G": [".##","#..","#.#","#.#",".##"], "H": ["#.#","#.#","###","#.#","#.#"],
+  "I": ["###",".#.",".#.",".#.","###"], "J": ["..#","..#","..#","#.#",".#."], "K": ["#.#","#.#","##.","#.#","#.#"],
+  "L": ["#..","#..","#..","#..","###"], "M": ["#.#","###","#.#","#.#","#.#"], "N": ["##.","#.#","#.#","#.#","#.#"],
+  "O": [".#.","#.#","#.#","#.#",".#."], "P": ["##.","#.#","##.","#..","#.."], "Q": [".#.","#.#","#.#","##.",".##"],
+  "R": ["##.","#.#","##.","#.#","#.#"], "S": [".##","#..","###","..#","##."], "T": ["###",".#.",".#.",".#.",".#."],
+  "U": ["#.#","#.#","#.#","#.#","###"], "V": ["#.#","#.#","#.#","#.#",".#."], "W": ["#.#","#.#","###","###","#.#"],
+  "X": ["#.#","#.#",".#.","#.#","#.#"], "Y": ["#.#","#.#",".#.",".#.",".#."], "Z": ["###","..#",".#.","#..","###"],
+  "%": ["#.#","..#",".#.","#..","#.#"], "!": [".#.",".#.",".#.","...",".#."], "?": ["##.","..#",".#.","...",".#."],
+  ":": ["...",".#.","...",".#.","..."], "-": ["...","...","###","...","..."], "+": ["...",".#.","###",".#.","..."],
+  ".": ["...","...","...","...",".#."], "/": ["..#","..#",".#.","#..","#.."], " ": ["...","...","...","...","..."],
+};
+
+// --- immagini 32x32 RGB ---
+function newFrame() { return new Uint8Array(W * H * 3); }
+function put(img, x, y, c) {
+  if (x < 0 || y < 0 || x >= W || y >= H) return;
+  const i = (y * W + x) * 3; img[i] = c[0]; img[i + 1] = c[1]; img[i + 2] = c[2];
+}
+function get(img, x, y) { const i = (y * W + x) * 3; return [img[i], img[i + 1], img[i + 2]]; }
+function rect(img, x0, y0, x1, y1, c, fill) {
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++)
+    if (fill || x === x0 || x === x1 || y === y0 || y === y1) put(img, x, y, c);
+}
+const textWidth = (t, s = 1) => t ? t.length * 4 * s - s : 0;
+function drawText(img, x, y, text, c, s = 1) {
+  for (const ch of text.toUpperCase()) {
+    const g = FONT[ch] || FONT["?"];
+    for (let r = 0; r < 5; r++) for (let k = 0; k < 3; k++) if (g[r][k] === "#")
+      for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) put(img, x + k * s + dx, y + r * s + dy, c);
+    x += 4 * s;
+  }
+}
+const drawCentered = (img, y, t, c, s = 1) => drawText(img, Math.floor((W - textWidth(t, s)) / 2), y, t, c, s);
+const drawRight = (img, xEnd, y, t, c, s = 1) => drawText(img, xEnd - textWidth(t, s) + 1, y, t, c, s);
+
+// --- formattazione tempi ---
+function fmtMinutes(m) {
+  if (m === null || m === undefined) return "";
+  m = Math.max(0, Math.trunc(m));
+  if (m < 60) return m + "M";
+  if (m < 24 * 60) return Math.floor(m / 60) + "H";
+  return Math.floor(m / 1440) + "G";
+}
+const fmtUntil = (epoch, now) => epoch ? fmtMinutes((epoch - now) / 60) : "";
+
+// --- modello: lo stato arriva dal PC già classificato ---
+// state = {v, ts, ccam, s: [[label, code, t, reason]], i: idleCount, l: [p5, r5, p7, r7, stale, ok]}
+const ORDER = { u: 0, e: 1, w: 2, d: 3 };
+const waitKey = r => (r.code === "u" || r.code === "d") && r.t ? r.t : 0;   // altrimenti resta l'ordine del PC
+const COLOR = { u: YELLOW, e: RED, w: GREEN, d: BLUE, i: GRAY };
+function model(state) {
+  const rows = (state.s || []).map(([label, code, t, reason]) => ({ label, code, t: t || 0, reason: reason || "" }))
+    .sort((a, b) => (ORDER[a.code] - ORDER[b.code]) || waitKey(a) - waitKey(b));   // come il PC: più attesa prima
+  const count = c => rows.filter(r => r.code === c).length;
+  const l = state.l || [];
+  return { ccam: !!state.ccam, rows, count, idle: state.i || 0,
+           five: { pct: l[0], resets: l[1] }, seven: { pct: l[2], resets: l[3] }, limStale: !!l[4] };
+}
+
+// --- schermate (stesse del PC) ---
+function screenSummary(m) {
+  const img = newFrame();
+  const quad = (ox, oy, n, c) => {
+    const on = n > 0;
+    rect(img, ox, oy, ox + 15, oy + 15, on ? c : dim(c, 0.22), false);
+    const t = String(Math.min(n, 99));
+    drawText(img, ox + Math.floor((16 - textWidth(t, 2)) / 2), oy + 3, t, on ? c : dim(c, 0.35), 2);
+  };
+  quad(0, 0, m.count("u"), YELLOW); quad(16, 0, m.count("w"), GREEN); quad(0, 16, m.count("d"), BLUE);
+  const e = m.count("e");
+  if (e) quad(16, 16, e, RED); else quad(16, 16, m.idle, GRAY);
+  return { name: "summary", frames: [img], ms: 0 };
+}
+
+function screenDetails(m, now) {
+  const rows = m.rows; const per = 5; const out = [];
+  const pages = []; for (let i = 0; i < rows.length; i += per) pages.push(rows.slice(i, i + per));
+  pages.forEach((page, p) => {
+    const img = newFrame();
+    page.forEach((s, i) => {
+      const y = i * 6, c = COLOR[s.code];
+      drawText(img, 0, y, s.label, WHITE);
+      rect(img, 13, y, 15, y + 4, c, true);
+      const t = (s.code === "u" || s.code === "d" || (s.code === "w" && s.t)) && s.t ? fmtMinutes((now - s.t) / 60) : "";
+      if (t) drawRight(img, 31, y, t, c);
+    });
+    if (pages.length > 1) {
+      const x0 = Math.floor((W - (pages.length * 3 - 1)) / 2);
+      for (let k = 0; k < pages.length; k++) {
+        const c = k === p ? WHITE : GRAY; put(img, x0 + k * 3, 31, c); put(img, x0 + k * 3 + 1, 31, c);
+      }
+    }
+    out.push({ name: "details" + p, frames: [img], ms: 0 });
+  });
+  return out;
+}
+
+function screenLimits(m, now) {
+  const img = newFrame();
+  const pctColor = p => p < 50 ? GREEN : p < 80 ? YELLOW : RED;
+  const block = (y, label, lim) => {
+    drawText(img, 0, y, label, WHITE);
+    rect(img, 1, y + 7, 30, y + 9, BAR_BG, true);
+    if (lim.pct === null || lim.pct === undefined) { drawRight(img, 31, y, "?", GRAY); return; }
+    const p = Math.max(0, Math.min(100, lim.pct));
+    let c = pctColor(p); if (m.limStale) c = dim(c, 0.35);
+    drawRight(img, 31, y, String(Math.round(p)), c);
+    const u = fmtUntil(lim.resets, now); if (u) drawText(img, 10, y, u, GRAY);
+    const fill = Math.round(p / 100 * 30); if (fill > 0) rect(img, 1, y + 7, fill, y + 9, c, true);
+  };
+  block(1, "5H", m.five); block(17, "7G", m.seven);
+  return { name: "limits", frames: [img], ms: 0 };
+}
+
+function screenUrgent(m, now, blinkMs) {
+  const urgent = m.rows.filter(r => r.code === "u");
+  const render = on => {
+    const img = newFrame();
+    if (on) rect(img, 0, 0, 31, 31, YELLOW, false);
+    drawCentered(img, 2, "ATTESA", on ? YELLOW : dim(YELLOW, 0.4));
+    if (urgent.length === 1) {
+      const s = urgent[0];
+      drawCentered(img, 10, s.label, YELLOW, 2);
+      const why = s.reason === "i" ? "INT" : "PERM";
+      drawCentered(img, 24, (why + " " + fmtMinutes(s.t ? (now - s.t) / 60 : null)).trim(), WHITE);
+    } else {
+      urgent.slice(0, 4).forEach((s, i) => {
+        const y = 9 + i * 6;
+        drawText(img, 2, y, s.label, YELLOW);
+        drawRight(img, 29, y, fmtMinutes(s.t ? (now - s.t) / 60 : null), WHITE);
+      });
+    }
+    return img;
+  };
+  return { name: "urgent", frames: [render(true), render(false)], ms: blinkMs };
+}
+
+function screenPcOff(lastTs, now) {
+  const img = newFrame();
+  drawCentered(img, 6, "PC", GRAY);
+  drawCentered(img, 14, "OFF", RED);
+  drawCentered(img, 24, lastTs ? fmtMinutes((now - lastTs) / 60) : "?", GRAY);
+  return { name: "pc_off", frames: [img], ms: 0 };
+}
+
+function screenWaiting() {
+  const img = newFrame();
+  drawCentered(img, 13, "...", GRAY);
+  return { name: "waiting", frames: [img], ms: 0 };
+}
+
+// --- mascotte: pallino con gli occhi, alone colorato = stato ---
+const BALL = [235, 235, 235];
+const M_CX = 15.5, M_CY = 14.0, M_R = 10.6;
+function drawOrb(img, radius, color, cx = 15.5, cy = 15.5, ring = null, flat = false) {
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const d = Math.hypot(x - cx, y - cy);
+    let v = 0;
+    if (radius > 0) {
+      const edge = Math.max(0, Math.min(1, radius - d + 0.5));
+      const core = flat ? 1 : 0.75 + 0.25 * Math.max(0, 1 - d / radius);
+      v = edge * core;
+    }
+    if (ring) v = Math.max(v, ring[1] * Math.max(0, 1 - Math.abs(d - ring[0])));
+    if (v > 0) {
+      const b = get(img, x, y);
+      put(img, x, y, [0, 1, 2].map(i => Math.min(255, Math.trunc(b[i] + color[i] * v))));
+    }
+  }
+}
+function blendDisc(img, cx, cy, r, color) {
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const v = Math.max(0, Math.min(1, r - Math.hypot(x - cx, y - cy) + 0.5));
+    if (v > 0) { const b = get(img, x, y); put(img, x, y, [0, 1, 2].map(i => Math.min(255, Math.trunc(b[i] * (1 - v) + color[i] * v)))); }
+  }
+}
+const pyRound = x => { const f = Math.floor(x), d = x - f; return d > 0.5 ? f + 1 : d < 0.5 ? f : (f % 2 === 0 ? f : f + 1); };
+function drawMascot(img, color, halo, lx = 0, ly = 0, op = 1, hands = [[0, 0], [0, 0]], bob = 0, wide = false) {
+  const cy = M_CY + bob;
+  if (halo > 0) drawOrb(img, 0, color, M_CX, cy, [M_R + 1.9, pyRound(halo * 4) / 4]);
+  const q = v => Math.floor(v * 64 + 0.5) / 64;   // stessa quantizzazione dello script del PC
+  blendDisc(img, 3.0 + q(hands[0][0]), cy + 7 + q(hands[0][1]), 2.3, BALL);
+  blendDisc(img, 28.0 + q(hands[1][0]), cy + 7 + q(hands[1][1]), 2.3, BALL);
+  blendDisc(img, M_CX, cy, M_R, BALL);
+  const ew = wide ? 4 : 3, eh = wide ? 9 : 7;
+  const h = Math.max(1, pyRound(eh * op)), top = Math.trunc(cy - 4) + Math.floor((7 - h) / 2) + ly;
+  for (const ex of [11, 18]) {
+    const x0 = ex + Math.floor((3 - ew) / 2) + lx;
+    for (let dx = 0; dx < ew; dx++) for (let dy = 0; dy < h; dy++) put(img, x0 + dx, top + dy, BLACK);
+  }
+}
+const LOOK_WORK = [[0,0,1],[-1,0,1],[-2,0,1],[-2,0,1],[-1,0,1],[0,0,1],[0,0,0],[0,0,1],[1,0,1],[2,-1,1],[2,-1,1],[1,0,1]];
+const JUMP = [0, 0, -1, -3, -4, -4, -3, -1, 0, 0, 0, 0];
+function screenMascot(m, speed = 1, event = null, tired = null, tiredPercent = 80) {
+  speed = Math.max(0.25, speed || 1);
+  if (tired === null) tired = m.five.pct !== null && m.five.pct !== undefined && m.five.pct >= tiredPercent;
+  const cap = tired ? 0.55 : 1;
+  const frames = [];
+  const add = (color, halo, lx = 0, ly = 0, op = 1, hands = [[0, 0], [0, 0]], bob = 0, wide = false) => {
+    const img = newFrame(); drawMascot(img, color, halo, lx, ly, wide ? op : Math.min(op, cap), hands, bob, wide); frames.push(img);
+  };
+  let mood, ms;
+  if (event === "surprise") {
+    mood = "surprise"; ms = 80;
+    for (let i = 0; i < 12; i++) { const wide = i >= 2 && i <= 8, sp = wide ? 1 : 0;
+      add(BLUE, 0.85, 0, 0, 1, [[-sp, -3 * sp], [sp, -3 * sp]], 0, wide); }
+  } else if (event === "jump") {
+    mood = "jump"; ms = 70;
+    JUMP.forEach((b, i) => { const up = b < -1 ? -4 : 0; add(GREEN, 0.85, 0, 0, i === 8 ? 0.4 : 1, [[0, up], [0, up]], b); });
+  } else if (m.count("e")) {
+    mood = "error"; ms = 60;
+    for (let i = 0; i < 12; i++) { const sh = i < 8 ? [-1, 1][i % 2] : 0;
+      add(RED, i % 4 < 2 ? 0.9 : 0.5, sh, 0, 1, [[sh, 0], [sh, 0]]); }
+  } else if (m.count("d")) {
+    mood = "done"; ms = 80; const n = 16;
+    for (let i = 0; i < n; i++) { const t = i / n * 2 * Math.PI, up = -6 - 2 * Math.sin(t * 2), wave = 0.6 * Math.sin(t * 2);
+      const op = i >= 4 && i <= 11 ? 0.35 : 1;
+      add(BLUE, 0.65 + 0.2 * Math.sin(t), 0, op < 1 ? -1 : 0, op, [[wave, up], [-wave, up]], i % 4 < 2 ? -1 : 0); }
+  } else if (m.count("w")) {
+    mood = "working"; ms = 75; const n = LOOK_WORK.length * 2;
+    for (let i = 0; i < n; i++) { const [lx, ly, op] = LOOK_WORK[Math.floor(i / 2)], t = i / n * 2 * Math.PI;
+      add(GREEN, 0.65 + 0.2 * Math.sin(t), lx, ly, op, [[0, -3 * Math.max(0, Math.sin(t * 3))], [0, -3 * Math.max(0, -Math.sin(t * 3))]]); }
+  } else {
+    mood = "idle"; ms = 160; const n = 16;
+    for (let i = 0; i < n; i++) { const t = i / n * 2 * Math.PI;
+      add(WHITE, 0.4 + 0.1 * Math.sin(t), 0, 1, 0, [[0, 1], [0, 1]], Math.floor(i / 4) % 2); }
+  }
+  return { name: "mascot_" + mood + (tired ? "_stanca" : ""), frames, ms: Math.max(20, Math.trunc(ms / speed)) };
+}
+// reazioni: confronta gli stati con quelli ricevuti prima (le sessioni ferme non arrivano: contano come ferme)
+function detectEvents(prev, m) {
+  if (!prev) return null;
+  let ev = null;
+  for (const r of m.rows) {
+    const p = prev.get(r.label) || "i";
+    if (p === "w" && r.code === "d") ev = "surprise";
+    else if ((p === "d" || p === "i") && r.code === "w" && ev === null) ev = "jump";
+  }
+  return ev;
+}
+
+function buildRotation(m, now, opts) {
+  const pages = [];
+  if (m.ccam) {
+    pages.push(screenSummary(m));
+    if (opts.mascot) pages.push(screenMascot(m, opts.speed, null, null, opts.tiredPercent));
+    pages.push(...screenDetails(m, now));
+  } else {
+    const img = newFrame(); drawCentered(img, 8, "CCAM", RED); drawCentered(img, 18, "OFF", GRAY);
+    pages.push({ name: "ccam_down", frames: [img], ms: 0 });
+  }
+  pages.push(screenLimits(m, now));
+  return pages;
+}
+const signature = sc => sc.name + "|" + sc.ms + "|" + sc.frames.map(f => f.join(",")).join("|");
+
+// --- encoder GIF (89a, palette globale, LZW) ---
+function encodeGif(frames, ms) {
+  const colors = new Map(); const palette = [];
+  const key = (f, i) => (f[i] << 16) | (f[i + 1] << 8) | f[i + 2];
+  let shift = 0;
+  const quant = k => shift ? ((((k >> 16) & 255) >> shift << shift) << 16) | ((((k >> 8) & 255) >> shift << shift) << 8) | ((k & 255) >> shift << shift) : k;
+  for (;;) {
+    colors.clear(); palette.length = 0; let over = false;
+    for (const f of frames) { for (let i = 0; i < f.length; i += 3) {
+      const k = quant(key(f, i));
+      if (!colors.has(k)) { if (palette.length >= 256) { over = true; break; } colors.set(k, palette.length); palette.push(k); }
+    } if (over) break; }
+    if (!over) break; shift++;
+  }
+  let bits = 1; while ((1 << bits) < Math.max(2, palette.length)) bits++;
+  const tableSize = 1 << bits;
+  const out = [];
+  const w16 = v => { out.push(v & 255, (v >> 8) & 255); };
+  for (const ch of "GIF89a") out.push(ch.charCodeAt(0));
+  w16(W); w16(H); out.push(0x80 | ((bits - 1) << 4) | (bits - 1), 0, 0);
+  for (let i = 0; i < tableSize; i++) { const k = palette[i] || 0; out.push((k >> 16) & 255, (k >> 8) & 255, k & 255); }
+  if (frames.length > 1) out.push(0x21, 0xFF, 11, ...Array.from("NETSCAPE2.0", c => c.charCodeAt(0)), 3, 1, 0, 0, 0);
+  const delay = Math.round((ms || 0) / 10);
+  const minCode = Math.max(2, bits);
+  for (const f of frames) {
+    if (frames.length > 1) { out.push(0x21, 0xF9, 4, 0x04); w16(delay); out.push(0, 0); }
+    out.push(0x2C); w16(0); w16(0); w16(W); w16(H); out.push(0);
+    const idx = new Uint8Array(W * H);
+    for (let p = 0, i = 0; i < f.length; i += 3, p++) idx[p] = colors.get(quant(key(f, i)));
+    const data = lzw(idx, minCode);
+    out.push(minCode);
+    for (let i = 0; i < data.length; i += 255) { const blk = data.slice(i, i + 255); out.push(blk.length, ...blk); }
+    out.push(0);
+  }
+  out.push(0x3B);
+  return new Uint8Array(out);
+}
+function lzw(indices, minCode) {
+  const clear = 1 << minCode, eoi = clear + 1;
+  let codeSize = minCode + 1, next = eoi + 1;
+  let dict = new Map();
+  const bytes = []; let cur = 0, nbits = 0;
+  const emit = c => { cur |= c << nbits; nbits += codeSize; while (nbits >= 8) { bytes.push(cur & 255); cur >>>= 8; nbits -= 8; } };
+  emit(clear);
+  let prefix = indices[0];
+  for (let i = 1; i < indices.length; i++) {
+    const k = indices[i]; const kk = prefix * 4096 + k;
+    if (dict.has(kk)) { prefix = dict.get(kk); continue; }
+    emit(prefix);
+    if (next < 4096) { dict.set(kk, next++); if (next > (1 << codeSize) && codeSize < 12) codeSize++; }
+    else { emit(clear); dict = new Map(); codeSize = minCode + 1; next = eoi + 1; }
+    prefix = k;
+  }
+  emit(prefix); emit(eoi);
+  if (nbits > 0) bytes.push(cur & 255);
+  return bytes;
+}
+
+// --- protocollo pannello (come pypixelcolor) ---
+const CRC_TABLE = (() => { const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+  return t; })();
+function crc32(b) { let c = 0xFFFFFFFF; for (const x of b) c = CRC_TABLE[(c ^ x) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+const le32 = v => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
+function imagePlan(fileBytes, isGif, saveSlot = 0) {
+  const size = le32(fileBytes.length), crc = le32(crc32(fileBytes));
+  const windows = []; const win = 12 * 1024;
+  for (let pos = 0, wi = 0; pos < fileBytes.length; pos += win, wi++) {
+    const payload = fileBytes.slice(pos, Math.min(pos + win, fileBytes.length));
+    const option = wi === 0 ? 0x00 : 0x02;
+    const header = [isGif ? 0x03 : 0x02, 0x00, option, ...size, ...crc, isGif ? 0x02 : 0x00, saveSlot];
+    const frameLen = header.length + payload.length;
+    const prefix = [(2 + frameLen) & 255, ((2 + frameLen) >> 8) & 255];
+    const msg = new Uint8Array(2 + frameLen); msg.set(prefix, 0); msg.set(header, 2); msg.set(payload, 2 + header.length);
+    windows.push(msg);
+  }
+  return { windows, ackFinal: true };
+}
+const cmdPlan = bytes => ({ windows: [new Uint8Array(bytes)], ackFinal: false });
+const brightnessPlan = level => cmdPlan([5, 0, 4, 0x80, Math.max(0, Math.min(100, level | 0))]);
+const powerPlan = on => cmdPlan([5, 0, 7, 1, on ? 1 : 0]);
+function deviceInfoCmd(d) { return new Uint8Array([8, 0, 1, 0x80, d.getHours(), d.getMinutes(), d.getSeconds(), 0]); }
+function screenPlan(sc) { return imagePlan(encodeGif(sc.frames, sc.ms || 600), true); }
+function ackCode(data) { // data: Uint8Array dalla notifica
+  if (data.length > 4 && data[0] === 0x05) { if (data[4] === 0 || data[4] === 1) return "window"; if (data[4] === 3) return "all"; }
+  return null;
+}
+
+// --- cifratura (AES-GCM, chiave e topic dal codice di abbinamento) ---
+function b64uDec(s) { s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "=";
+  const bin = atob(s); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+function parsePairing(code) {
+  code = (code || "").trim().replace(/^#/, "");
+  const i = code.lastIndexOf("."); if (i < 1) return null;
+  const topic = code.slice(0, i), key = code.slice(i + 1);
+  if (!/^[A-Za-z0-9_-]{8,}$/.test(topic) || b64uDec(key).length !== 32) return null;
+  return { topic, key };
+}
+async function decryptState(body, pairing) {
+  if (!body.startsWith("v1.")) throw new Error("formato sconosciuto");
+  const raw = b64uDec(body.slice(3));
+  const key = await crypto.subtle.importKey("raw", b64uDec(pairing.key), "AES-GCM", false, ["decrypt"]);
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: raw.slice(0, 12),
+    additionalData: new TextEncoder().encode(pairing.topic) }, key, raw.slice(12));
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+</script>
+
+<!-- ======================= INTERFACCIA, BLUETOOTH E RELAY ======================= -->
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const DEFAULTS = { pair: "", server: "https://ntfy.sh", rotate: 15, speed: 1, mascot: true, brightness: 35,
+                   schedOn: false, days: [1, 2, 3, 4, 5, 6, 0], on: "09:00", off: "23:00", blinkMs: 600,
+                   staleMinutes: 25, eventSeconds: 8, tiredPercent: 80 };
+const store = {
+  load() { try { return Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem("pannello_casa") || "{}")); }
+           catch { return Object.assign({}, DEFAULTS); } },
+  save(c) { try { localStorage.setItem("pannello_casa", JSON.stringify(c)); } catch {} },
+};
+let cfg = store.load();
+
+// ---- registro ----
+const logLines = [];
+function log(msg) {
+  const t = new Date().toLocaleTimeString("it-IT");
+  logLines.push(`${t}  ${msg}`); if (logLines.length > 80) logLines.shift();
+  $("log").textContent = logLines.slice().reverse().join("\n");
+}
+function chip(id, cls, text) { $("d" + id).className = "dot " + cls; $("t" + id).textContent = text; }
+function warn(text) { const w = $("warn"); w.textContent = text || ""; w.style.display = text ? "block" : "none"; }
+
+// ---- abbinamento da link (#codice) ----
+if (location.hash.length > 1) {
+  const p = parsePairing(decodeURIComponent(location.hash.slice(1)));
+  if (p) { cfg.pair = `${p.topic}.${p.key}`; store.save(cfg); log("Codice di abbinamento salvato dal link"); }
+  history.replaceState(null, "", location.pathname + location.search);
+}
+
+// ---- impostazioni ----
+const DAY_NAMES = [["L", 1], ["M", 2], ["M", 3], ["G", 4], ["V", 5], ["S", 6], ["D", 0]];
+function fillSettings() {
+  $("pair").value = cfg.pair; $("server").value = cfg.server; $("rotate").value = cfg.rotate;
+  $("speed").value = cfg.speed; $("mascot").checked = cfg.mascot; $("schedOn").checked = cfg.schedOn;
+  $("tOn").value = cfg.on; $("tOff").value = cfg.off; $("bright").value = cfg.brightness;
+  $("brightVal").textContent = cfg.brightness;
+  $("days").innerHTML = DAY_NAMES.map(([n, d]) =>
+    `<label><input type="checkbox" value="${d}" ${cfg.days.includes(d) ? "checked" : ""}>${n}</label>`).join("");
+  if (!parsePairing(cfg.pair)) $("setup").open = true;
+}
+$("btnSave").onclick = () => {
+  const pair = $("pair").value.trim();
+  if (pair && !parsePairing(pair)) { warn("Codice di abbinamento non valido: copialo intero dall'output di --pair."); return; }
+  cfg = Object.assign(cfg, {
+    pair, server: ($("server").value.trim() || DEFAULTS.server).replace(/\/+$/, ""),
+    rotate: Math.max(5, +$("rotate").value || 15), speed: Math.max(0.25, +$("speed").value || 1),
+    mascot: $("mascot").checked, schedOn: $("schedOn").checked, on: $("tOn").value || "09:00",
+    off: $("tOff").value || "23:00",
+    days: [...$("days").querySelectorAll("input:checked")].map(i => +i.value),
+  });
+  store.save(cfg); warn(""); log("Impostazioni salvate"); startRelay(); lastSig = null;
+};
+$("bright").oninput = e => { $("brightVal").textContent = e.target.value; };
+$("bright").onchange = async e => {
+  cfg.brightness = +e.target.value; store.save(cfg);
+  if (panel.connected) await panel.run(brightnessPlan(cfg.brightness)).catch(err => log("Luminosità: " + err.message));
+};
+
+// ---- stato dati ----
+let state = null, stateReceived = 0;
+function dataAgeMin() { return state ? (Date.now() / 1000 - state.ts) / 60 : null; }
+
+// ---- relay ntfy: lettura iniziale + flusso in tempo reale ----
+let es = null, pollTimer = null;
+async function handleBody(body, source) {
+  const p = parsePairing(cfg.pair); if (!p) return;
+  try {
+    const st = await decryptState(body, p);
+    if (!state || st.ts >= state.ts) { state = st; stateReceived = Date.now(); }
+    log(`Stato ricevuto (${source}): ${st.s.length} sessioni attive, ${st.i} ferme`);
+  } catch (e) { log("Messaggio non decifrabile (codice errato?)"); }
+}
+async function pollLatest() {
+  const p = parsePairing(cfg.pair); if (!p) return;
+  try {
+    const r = await fetch(`${cfg.server}/${p.topic}/json?poll=1&since=12h`, { cache: "no-store" });
+    const lines = (await r.text()).trim().split("\n").filter(Boolean);
+    const msgs = lines.map(l => { try { return JSON.parse(l); } catch { return null; } })
+                      .filter(m => m && m.event === "message" && m.message);
+    if (msgs.length) await handleBody(msgs[msgs.length - 1].message, "lettura");
+  } catch (e) { log("Relay non raggiungibile: " + e.message); }
+}
+function startRelay() {
+  if (es) { es.close(); es = null; }
+  clearInterval(pollTimer);
+  const p = parsePairing(cfg.pair);
+  if (!p) { chip("Data", "bad", "Manca il codice di abbinamento"); return; }
+  pollLatest();
+  es = new EventSource(`${cfg.server}/${p.topic}/sse`);
+  es.onmessage = ev => { try { const m = JSON.parse(ev.data); if (m.message) handleBody(m.message, "tempo reale"); } catch {} };
+  es.onerror = () => log("Flusso relay interrotto, riprovo…");
+  pollTimer = setInterval(pollLatest, 5 * 60 * 1000);   // sicurezza se il flusso si blocca
+}
+
+// ---- Bluetooth (Web Bluetooth) ----
+const SERVICES = [0x00fa, 0xfa00];
+const panel = {
+  device: null, write: null, notify: null, connected: false, busy: false, chunk: 244,
+  waiters: [],
+  onNotify(ev) {
+    const d = new Uint8Array(ev.target.value.buffer); const code = ackCode(d);
+    if (!code) return;
+    this.waiters.forEach(w => w(code));
+  },
+  waitAck(kind, ms = 8000) {
+    return new Promise((resolve, reject) => {
+      const to = setTimeout(() => { done(); reject(new Error("nessuna conferma dal pannello")); }, ms);
+      const fn = code => { if (kind === "window" || code === "all") { done(); resolve(); } };
+      const done = () => { clearTimeout(to); this.waiters = this.waiters.filter(w => w !== fn); };
+      this.waiters.push(fn);
+    });
+  },
+  async choose() {
+    this.device = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: "LED_BLE_" }], optionalServices: SERVICES });
+    this.device.addEventListener("gattserverdisconnected", () => {
+      this.connected = false; updateChips(); log("Pannello scollegato"); setTimeout(() => this.reconnect(), 3000);
+    });
+    await this.connect();
+  },
+  async connect() {
+    const server = await this.device.gatt.connect();
+    let svc = null;
+    for (const s of SERVICES) { try { svc = await server.getPrimaryService(s); break; } catch {} }
+    if (!svc) throw new Error("servizio del pannello non trovato");
+    this.write = await svc.getCharacteristic(0xfa02);
+    this.notify = await svc.getCharacteristic(0xfa03);
+    await this.notify.startNotifications();
+    this.notify.addEventListener("characteristicvaluechanged", e => this.onNotify(e));
+    this.connected = true; lastSig = null; poweredOn = null;
+    await this.writeRaw(deviceInfoCmd(new Date())).catch(() => {});
+    await new Promise(r => setTimeout(r, 400));
+    await this.run(brightnessPlan(cfg.brightness));
+    log(`Pannello collegato (${this.device.name})`); updateChips(); keepAwake();
+  },
+  async reconnect() {
+    if (this.connected || !this.device) return;
+    try { await this.connect(); }
+    catch (e) { log("Riconnessione fallita: " + e.message); setTimeout(() => this.reconnect(), 15000); }
+  },
+  async writeRaw(bytes) {
+    for (let i = 0; i < bytes.length; i += this.chunk) {
+      const part = bytes.slice(i, i + this.chunk);
+      if (this.write.writeValueWithResponse) await this.write.writeValueWithResponse(part);
+      else await this.write.writeValue(part);
+    }
+  },
+  async run(plan) {
+    while (this.busy) await new Promise(r => setTimeout(r, 50));
+    this.busy = true;
+    try {
+      for (let wi = 0; wi < plan.windows.length; wi++) {
+        const last = wi === plan.windows.length - 1;
+        const ack = this.waitAck(plan.ackFinal && last ? "all" : "window");
+        try { await this.writeRaw(plan.windows[wi]); }
+        catch (e) {
+          ack.catch(() => {});
+          if (this.chunk > 20) { this.chunk = this.chunk > 180 ? 180 : this.chunk > 100 ? 100 : 20;
+            log(`Scrittura rifiutata, riprovo con blocchi da ${this.chunk} byte`); wi--; continue; }
+          throw e;
+        }
+        await ack;
+      }
+    } finally { this.busy = false; }
+  },
+};
+$("btnConnect").onclick = async () => {
+  if (!navigator.bluetooth) { warn("Questo browser non supporta Web Bluetooth. Usa Chrome per Android e apri la pagina da un indirizzo https."); return; }
+  try { await panel.choose(); } catch (e) { log("Collegamento annullato o fallito: " + e.message); }
+};
+
+// ---- accensione / spegnimento ----
+let manualOff = false, poweredOn = null;
+function inSchedule(d = new Date()) {
+  if (!cfg.schedOn) return true;
+  if (!cfg.days.includes(d.getDay())) return false;
+  const hm = d.toTimeString().slice(0, 5);
+  return cfg.on <= cfg.off ? (hm >= cfg.on && hm < cfg.off) : (hm >= cfg.on || hm < cfg.off);
+}
+$("btnPower").onclick = () => { manualOff = !manualOff; lastSig = null; updateChips(); };
+
+// ---- schermo sempre acceso mentre il pannello è collegato ----
+let wakeLock = null;
+async function keepAwake() {
+  try { if ("wakeLock" in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", () => { wakeLock = null; }); } } catch {}
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && panel.connected) keepAwake(); });
+
+// ---- anteprima sul telefono ----
+const ctx = $("screen").getContext("2d");
+let preview = { frames: [newFrame()], ms: 0 }, previewIdx = 0, previewTimer = null;
+function drawPreview(f) {
+  const id = ctx.createImageData(W, H);
+  for (let p = 0, i = 0; p < W * H; p++, i += 3) { id.data[p*4] = f[i]; id.data[p*4+1] = f[i+1]; id.data[p*4+2] = f[i+2]; id.data[p*4+3] = 255; }
+  ctx.putImageData(id, 0, 0);
+}
+function setPreview(sc) {
+  preview = sc; previewIdx = 0; clearTimeout(previewTimer); drawPreview(sc.frames[0]);
+  const step = () => { if (preview.frames.length < 2) return; previewIdx = (previewIdx + 1) % preview.frames.length;
+    drawPreview(preview.frames[previewIdx]); previewTimer = setTimeout(step, preview.ms || 600); };
+  if (sc.frames.length > 1) previewTimer = setTimeout(step, sc.ms || 600);
+}
+
+function updateChips() {
+  chip("Panel", panel.connected ? "ok" : "bad", panel.connected ? "Pannello collegato" : "Pannello non collegato");
+  const age = dataAgeMin();
+  if (!parsePairing(cfg.pair)) chip("Data", "bad", "Manca il codice di abbinamento");
+  else if (age === null) chip("Data", "warn", "In attesa dei dati dal PC");
+  else if (age > cfg.staleMinutes) chip("Data", "bad", `Dati vecchi: ${Math.round(age)} min`);
+  else chip("Data", "ok", age < 1 ? "Dati aggiornati" : `Dati di ${Math.round(age)} min fa`);
+  const on = !manualOff && inSchedule();
+  chip("Power", on ? "ok" : "warn", manualOff ? "Spento a mano" : on ? "Acceso" : "Fuori orario");
+  $("btnPower").textContent = manualOff ? "Accendi" : "Spegni";
+}
+
+// ---- ciclo principale ----
+let lastSig = null, pageIdx = 0, lastRotate = Date.now(), lastMode = null;
+let prevStates = null, prevTs = 0, event = null, eventUntil = 0;
+async function tick() {
+  updateChips();
+  const now = Date.now() / 1000;
+  const wantOn = !manualOff && inSchedule();
+  if (panel.connected && poweredOn !== wantOn) {
+    try { await panel.run(powerPlan(wantOn)); poweredOn = wantOn; lastSig = null; log(wantOn ? "Pannello acceso" : "Pannello spento"); }
+    catch (e) { log("Accensione/spegnimento: " + e.message); }
+  }
+  let sc, mode = "rotate";
+  if (!state) sc = screenWaiting();
+  else if (dataAgeMin() > cfg.staleMinutes) {
+    const m = model(state);
+    const pages = [screenPcOff(state.ts, now), screenLimits(m, now)];
+    if (Date.now() - lastRotate >= cfg.rotate * 1000) { pageIdx++; lastRotate = Date.now(); }
+    sc = pages[pageIdx % pages.length];
+  } else {
+    const m = model(state);
+    if (m.ccam && state.ts !== prevTs) {
+      const ev = detectEvents(prevStates, m);
+      prevStates = new Map(m.rows.map(r => [r.label, r.code])); prevTs = state.ts;
+      if (ev && cfg.mascot) { event = ev; eventUntil = Date.now() + cfg.eventSeconds * 1000; log("Reazione mascotte: " + ev); }
+    }
+    if (m.ccam && m.count("u") > 0) { sc = screenUrgent(m, now, cfg.blinkMs); mode = "urgent"; }
+    else if (event && Date.now() < eventUntil) { sc = screenMascot(m, cfg.speed, event, null, cfg.tiredPercent); mode = "event"; }
+    else {
+      event = null;
+      const pages = buildRotation(m, now, { mascot: cfg.mascot, speed: cfg.speed, tiredPercent: cfg.tiredPercent });
+      if (lastMode === "urgent" || lastMode === "event") { pageIdx = 0; lastRotate = Date.now(); }
+      else if (Date.now() - lastRotate >= cfg.rotate * 1000) { pageIdx++; lastRotate = Date.now(); }
+      sc = pages[pageIdx % pages.length];
+    }
+  }
+  lastMode = mode;
+  const sig = signature(sc);
+  if (sig !== (preview.sig || "")) { sc.sig = sig; setPreview(sc); }
+  if (panel.connected && wantOn && sig !== lastSig && !panel.busy) {
+    try { await panel.run(screenPlan(sc)); lastSig = sig; }
+    catch (e) { log("Invio schermata: " + e.message); }
+  }
+}
+
+fillSettings();
+startRelay();
+updateChips();
+setInterval(() => { tick().catch(e => log("Errore: " + e.message)); }, 2000);
+if (!navigator.bluetooth) warn("Web Bluetooth non disponibile: serve Chrome per Android e la pagina aperta da un indirizzo https.");
+</script>
+</body>
+</html>
