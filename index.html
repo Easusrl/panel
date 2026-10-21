@@ -36,6 +36,8 @@
     width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--line);
     background: var(--bg); color: var(--text); font: inherit; }
   input[type=range] { width: 100%; }
+  select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--line);
+           background: var(--bg); color: var(--text); font: inherit; }
   .inline { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
   .inline label { margin: 0; color: var(--text); font-size: 14px; }
   .days { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -74,9 +76,16 @@
     <label for="server">Server relay</label>
     <input type="text" id="server" placeholder="https://ntfy.sh">
     <div class="grid2">
-      <div><label for="rotate">Secondi per pagina</label><input type="number" id="rotate" min="5" max="120"></div>
+      <div><label for="rotate">Secondi per informazione</label><input type="number" id="rotate" min="3" max="120"></div>
       <div><label for="speed">Velocità mascotte</label><input type="number" id="speed" min="0.25" max="3" step="0.1"></div>
     </div>
+    <label for="rotation">Rotazione del pannello</label>
+    <select id="rotation">
+      <option value="0">Nessuna</option>
+      <option value="90">90° in senso orario</option>
+      <option value="180">180°</option>
+      <option value="-90">90° in senso antiorario (-90°)</option>
+    </select>
     <div class="inline"><input type="checkbox" id="mascot"><label for="mascot">Mostra la mascotte</label></div>
     <div class="inline"><input type="checkbox" id="schedOn"><label for="schedOn">Orario di accensione</label></div>
     <div class="days" id="days"></div>
@@ -221,7 +230,7 @@ function screenLimits(m, now) {
   return { name: "limits", frames: [img], ms: 0 };
 }
 
-function screenUrgent(m, now, blinkMs) {
+function screenUrgent(m, now, blinkMs, withMascot = true) {
   const urgent = m.rows.filter(r => r.code === "u");
   const render = on => {
     const img = newFrame();
@@ -241,6 +250,16 @@ function screenUrgent(m, now, blinkMs) {
     }
     return img;
   };
+  if (withMascot && MASCOT) {
+    const q = MASCOT.question, frames = [];
+    for (const s of urgent.slice(0, 4)) {
+      const text = (s.label + " " + fmtMinutes(s.t ? (now - s.t) / 60 : null)).trim();
+      for (let loop = 0; loop < 2; loop++) q.frames.forEach((f, k) => {
+        const img = new Uint8Array(f); stripText(img, text, k % 6 < 4 ? YELLOW : dim(YELLOW, 0.3)); frames.push(img);
+      });
+    }
+    return { name: "urgent", frames, ms: q.ms };
+  }
   return { name: "urgent", frames: [render(true), render(false)], ms: blinkMs };
 }
 
@@ -258,84 +277,82 @@ function screenWaiting() {
   return { name: "waiting", frames: [img], ms: 0 };
 }
 
-// --- mascotte: pallino con gli occhi, alone colorato = stato ---
-const BALL = [235, 235, 235];
-const M_CX = 15.5, M_CY = 14.0, M_R = 10.6;
-function drawOrb(img, radius, color, cx = 15.5, cy = 15.5, ring = null, flat = false) {
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const d = Math.hypot(x - cx, y - cy);
-    let v = 0;
-    if (radius > 0) {
-      const edge = Math.max(0, Math.min(1, radius - d + 0.5));
-      const core = flat ? 1 : 0.75 + 0.25 * Math.max(0, 1 - d / radius);
-      v = edge * core;
-    }
-    if (ring) v = Math.max(v, ring[1] * Math.max(0, 1 - Math.abs(d - ring[0])));
-    if (v > 0) {
-      const b = get(img, x, y);
-      put(img, x, y, [0, 1, 2].map(i => Math.min(255, Math.trunc(b[i] + color[i] * v))));
-    }
+// --- mascotte: le animazioni sono generate dallo script del PC (stessi pixel) e incluse qui ---
+const MASCOT_ASSETS = /*MASCOTTE_DATI*/{"working":{"ms":75,"z":"eNrtnTFr20AUx4UpuBg8xNClg5cO6VgMgRCDl3rJl+hiyNI5kDWQKZ7SDh0KzVC6BRoPGZs538OLwV+iL1JQHFs66e7eKbL1+2OILd/9rejQ3U/PT89RhBqs7pvo/dvoYzf7IW9JA1tJr++foi/96GCvuLs0kGbSWLpIx0LJXn39kDw9Ojo6OTm5iPVtQ8l2aSDNnvpKR+luluxG7Hx7e7ssLWn89Clxd9M/+/md/LUyTz/i0UG6Gw5p/O7x8fHSSdIx3cNsyTBF0enpqZu/dExNshWPrIzaaq/0zcKN0jE1wb9W/v1+f39/X8tfrMQwbXN2dpY0+PHv96Z/eSX+YpK8FNvHU7bbXW1zeHjo4y/dV7d0Y635+5xfm/4vjs/fX/7zg5isHp8X46s0v62Nb3XzcwXrS+j1sYL1HSEE/8P/8D/8X4n/cDgcj8eB/KfTadLg5uFO3b/X6622GY1GuvzfbrcXi0XaZjAY6PK/aDKZzOdz2XI+u/K8vsjkc1Gr1ep0Ov7nV56/4vyQyf+68xv8D/8jhOB/+L/J/F8eDt34XMs/L76t4m+Ib/v7m+Pb9fSvMv5f+P2FCv9rnV/wP/wP/yOE4H/4H/7fDf+8+L+KvyH+7+9vjv/78z/xf/gf/of/EULwP/y/M/xvBYcOfI5/Zf6Z8XNnf/L/yf+H/+F/hBD8D//D//B5ef/xeDwcDgP53zzcJS+n06k6/49Go9UtvV5Pl/8Hg0H6crFYtNttXf6X3TufXcnz+Xw+mUwyry/8z69Op9NqtTKujzT4P3N+0OX/V5uf4X+EEPwP/8P/8P8r+efGPzX8M/Pbtfzz8k+0+L8gvl37+P/m+Ibg/7VRhf/hf/gfIQT/w//wP/F/4v/E/+F/+B/+Rwj+h//hf+7/xT/ahvpI5P+T/w//w/8IIfgf/of/l9T/cfWn/o85P4r6P4X8rzu/wf/wP0II/of/m8z/y0b+vu2auTm+7elfGN+uoT/1/+F/+B/+RwjB//A//L/k939d/fn9X+L/8D/8jxCC/+F/+L8+/O9QXwV/Rf/Q34847D/5/+T/w//wP0JIgf8ND4f5QbrIfCUzeZnuyQ5IY+lS5rOSxm7zc7JLZsV06r6+GOA2+WfjBcJ9fZTuhqMUv+vL/4YlTFYif/6PTXKvX/z50HD9gn9sklv/J8vflv9v7mfJy4z6P977X1D/R/i2/vV/ri+XQev/HOzl1v/58zPQ/PDM/0Hnt9DzcwXrS+j1sYL1HSEE/8P/8H94/reOP1vycw39c+OfGv6m/A1v/4L6/2H8Ffl/8/jo1/9/Ob4h+H9tVOF/+B/+RwjB//A//N9w/1rF/638if8T/4f/4X+EEPwP/+88/5dHROf8GfxD+5vzf2z9c/P/ax//f+X8fw3+FxNT/r/G/GbK/4f/4X+EEPwP/8P/zeDnp/o/Yfyf6//cz9T9C+v/ePK/fv2fjfyo5/o/15dR0Po/3udXQf0fjfkhk/915zf4H/5HCMH/8P9W8H8ZhPO5/7eMv8/9s57+hfe3+viXiW87+5eMb4f2d86fDx3/Lzm+nvyvdX0N/8P/8D9CCP6H/+H/3fA3x/89/Qvj/z7+ZeL/PvxP/B/+h//hf4QQ/A//w//4b933I7WN/5P/T/4//I8Qgv/hf/gf/t92f6v6P7b+1P83X19Q/8d9foP/4X+EEPwP/9eJ/7n/V9Hfqv6/rb9t/X8rf4f6//7+1P83n1/wP/wP/yOE4H/4H/5vuL9t/N/K3yH+X96f+D/xf/gf/kda+g+cp4kj"},"working_t":{"ms":75,"z":"eNrt3T9r20AYx3FhCi4GDzF06eAlQzoWQyDE4KVe8ia6GLJ0DmQNdIqntJAOhWYo3QKNh4zNnPfhxeAX0T6VguI/0kl395wlO9+HQhtH97Nr1aePn54v19dLFWmXZP7d30//rH4XG8gP+vxUXO1X0dvX0bt29i/5lhxgWzLq6/voYzc63CseLgfIYXKwDJGBhSWP6tPT6T4+Pj49Pf0c15e1Sm6XA+Swp7EyUIabSx5GnHx3dzcvXXLw073Ew01/2Q9v5Her8PQu/ifIcMNTGn/35ORk7lQyMH2E2SWnKYrOzs7c8mVgGpJd8ZmVs+aWLwPTkJeTn36z8MYK87vd7sHBgVa+RElgesz5+XlywLc/P/2ffwlJvpTY/y/ZdnvxmKOjI598Gb54SzuulXyf19d6/tLz8/uH//wgIYvPz9L5VZrfVs7v5ubnDVxfQl8fN3B9p3aorvE//sf/+B//1zi/3+8Ph8NAPh+Px8kBt4/36vmdTmfxmMFgoOv/ZrM5m83SY3q9nq7/pUaj0XQ6lVsuJlee5zfT51KNRqPVavm/vvLyFeeHTP/rzm/4H/9T+B//43/8j//r73NDf9s/39DfLo/nvHxzf7ue+Zvs/+ue3wKf43/8j/8p/I//8T/+x//0/439f3+fm/v//vnm/r+//+n/43/8j/+p2vp/5b62Lh//43/8j//rlm+F52rzM/vnzvms/2f9P/7H/xT+x//4H//jf/xf3s/D4bDf7wfKv328T74cj8fq/h8MBou3dDodXf/3er30y9ls1mw2df0vD+9iciV/nk6no9Eo8/2F/+ur1Wo1Go2M90ca/s+cH3T9X9n8jP8p/I//8T/+x//4v6L83P6nhs8z17dr5eetP9Hyf0F/u/b9//XzG8L/K2cV/+N//E/hf/yP//E//qf/T/+f/j/+x//4H//z+V/8j//xP/7funwrQleYn7d/jls+6/9Z/4//8T+F//E//sf/+H/O/j+uPmf/H/P6KPb/KfS/7vyG//E/hf/xP/7H//i//j6vav//uffP5yrsb9cwn/3/8T/+x/8U/sf/+B//4/85P//XyecRP/+X/j/+x/8U/ufzv/gf/+N//E++3vsL9f8fYf0/6//xP/6n8D/+V/C/4ZfD/CBDZL6SmbzM8OQByMEypMx9JQe7zc/JQzJXrFP364sBt8lfNr5AuF8fZbjhWYq/6+t/wyVMrkT+/o9Dct+/+PvQ8P6F/Dgkd/+frHxb/98+TJIvM/b/8X78Bfv/iG/rv//PzeU86P4/h3u5+//8+h5ofnj2f9D5LfT8vIHrS+jr4wau7xT+x//4H//jf/wfID+3/6nhc9P6De/8gv3/w+Qr+n/9+dHf/3/5/Ibw/8pZxf/4H/9T+B//43/8j/93Kd/W/3Xr/1vl0/+n/4//8T+1Rf7n87/4H//jf/wfKL8koSvMN6//sc3PXf9f+/5/xev/NfwvIab1/xrzm2n9P/7H/xT+x//4H//j/5fh/6f9f8L4/Hn/n4eJen7h/j+e/tff/2dtfdTz/j83l1HQ/X+8X18F+/9ozA+Z/ted3/A//qfwP/7H//gf/9ff54Wfby1D3Lz8Mv1t5/yS/e3Q+T6fjwja/y95fj39r/X6wv/4H/9T+B//43/8j/9rku/j/8L+v2d+Yf/fJ79M/9/H//T/8T/+x/9Ubf2/cl9bl4//8T/+x/8V+n/b87X655vv/7P+n/X/+J/C//gf/+N//I//t93nVvv/2Oaz/7/53w/7/7jPb/gf/1P4H//jf/yP/3f0879W+//bfn7Wdv9/q3yH/f/989n/3/z6wv/4H/9T+B//43/8j/93LN/K/w79f6t8h/5/+Xz6//T/8T/+p7TqH5zsjZA="},"think":{"ms":140,"z":"eNrt2DFOwmAYgOEODi4dHFwcuuIFTAirE5dw5AYkHMATuDiYuDnLbXoILuFnS2oN0LSkPwF93hiN+P9fsQ3lCVmmf1x+ld1dd33FgiNmPhXZ422v7fUTiMWxpc+x6sVVs9lssVg8V73sVD8eC2LZdm/9lLqLp1FNXq/Xm97F4u1Rqu1d/+x9Hj8HDW8O8T0htnecpeqv8/l8c1SxsXmG+3u4iW/L5bLZ0vylPWfvg1FsbIbsr7qycdWOmx8b6yGTyaQoikTzXz/f619Xq9Xo86fTafuRPM8va/6h8xOXIy7K7vxBHbq+caB6QRx6lPm/XrJ53l4TJzD1/Pbra1CHXl8/5+fjLdH9YXt9U9/fUt+fT/D+kvr98QTv75L4n//5n//5n//5n//5XxL/8z//8z//8z//8z//S+J//ud//ud//ud//ud/Sfyf3v9lWfI///M///M///M//0vif/7nf/7nf/7nf/6XxP/8z//8z//8z//8z/+S+J//+Z//+Z//+Z//+V/SmVRWpbs/9J3P//zP//zP//zP//wvif/5n//5n//5n//5n/8l8T//X6z/R/FJhz9H8eG48wf5f+j8c/P/WOeH//mf//lfEv/zv8//ff7v83/+53/+53/9PYumhm7qQ/A///M///M///M///O/xP/8z//8z//8z//8z//8L/E///M///M///M///M//4v/+Z//+Z//+Z//+Z//+Z//dT59AULdi8k="},"think_t":{"ms":140,"z":"eNrt2z1OwmAcB2AGB5cODi4OLAx4ARPC6sQlHLkBCQfwBA44mLg5y216CA6hf1usoHwU0heEPL8YP8r7/t7ahvYJSSeTpbSaTnR+dDrV740vcYD+pMfnyMkuWjeXm75iwB6dD+3W/XWt6eUOxOCYUmetcnCRfr8/HA4fizz9Sbk9BsSw+dxylzYndqNonk6ns9qJwfNViumb/tnbLH7uVF4t8dUQ0zccpeLVwWAw2ysxsdrD1bm7im+j0Wi//phYlaxOcWbjrO3XHxPLkm632263E/U/v7+Wf47H46391SuLPSs3lv29Xm9xS5Zlp9W/7vjE6YiTkuj8xkLlgFi6kf6lt2yWLY6JA5i6v/H318/xeXtJdH2Yn9/U17fU1+cD3F9S3x8PcH+XM8qE//mf//mf//mf//mf//lf+J//+Z//+Z//+Z//+Z//+V/4n//5n//5n//5n//5n//5X/h/ff+vtU6un/9P3f95nvM///M///M///M//wv/8z//8z//8z//8z//87/wP//zP//zP//zP//zP//zv/A///M///M///M///M///O/8P/Wfs//HiZ5kXTXh7r9/M///M///M///M//wv/8z//8z//8z//8z//8z//C//zP//zP/2fq/137/5v/mzo+/M///M//wv/8z//8z/8+//f5P//zP//zv5yZ/ysopng+N/9OK9nzv4v7z//8z//8z//8z//8z//C//zP//zP//zP//zP//zP/8L//M///M///M///M///M//wv/8z//8z//8z//8z//8z/9y9HwC6wBJ8g=="},"done":{"ms":90,"z":"eNrtnM9LFGEYx3eJyg6LUEFUoNDFQ8jWpcQOeehiHfJgkQUeghRR7BCC4qGL4CFYJGKhWjz042AGSaVQ0Ck7FmHQqf/AP6K++cLLML92Z96dSafPl0VmXt/ns7Pz7s77feYZ3lKpCPr9IVu4eeV//OUDnfsq3fuPVkNf+pc6JH0vRR298qZy5u7BkxebhquDuqmzQhTYFK6j6jx/32z39/ePjY0t7OhhQKZdHdTN9FegwuP5OgxDXltb225Z6mzexYTHfNhDp65qIxHcvoUCFR5zSs1/BwcHt1NJgfYIferq6urp6dEwaXtmZiYdX4EKF0QoAS18dnbWdGi82tSuRi0dX4EKF8TsCvv37SoVb5++vr4gX92CtGCjAhXubansKJ5vP2bTxlB+/PmxEC8ttDHq/HjH1/yyfPzgdmij5QviG1+rID/F+Nqff/H47fp95X99yOf6lvX1OYf5Jev5MYf5HSFUDOH/i+H/R0ZG9JHv3Ku5z++CCCWghY+Ojto+k5OTLv5E4XZXWMNvNBq2cXV11cVfKdzuCmv409PTtnF+ft7F/yvc7gprT9Hc3NzGxsbi449Bf5jI/6tFEKEEbMV/pvD/ifxtOv9fVH+O/8f/4/8RQlQrsrv+xMPJL0LV29t7+Fi3+/wriFBeckdHhxyp6XbtxqiLf1C42RZQWMMfHx+3fTY3N138j8LtrrChfBf/Fsr3np/h4WGX/ELhwfNjx7f70qJ7fiGIb3zJL8gvyC/IL8gvEELUF6gvUF+gvoD/x//j//H/+H/EHfVdcke9vcePPy+GP896/uX5f57/L/H8P/4cf44/Rwhxfx7//9/4/3z8SUb+amJiYn19vVarHb+4EMpv3f+rURChBBRWu0NDQ7bD8usv7vfnBbEtgnsrAt9+/HL3/4J4qxUDAwN2t7b8yd3/C2JbBFeLvldLS0tTU1PtGl+hBBQW/4//x//j/xFCu7BawfP/5BeFzy/K5XK1WtXfKH6i/EIQC9SuNra2tvRf/b1w65F7fiGIBQper9dth6crn93zC0FsS31H8fyk+YWP3/T8JB1f3/lpZXyTfn+840t+QX5BfoEQor5AfQH/T32B+gL1Bfw//h//jxB31LM7fvw5/pzn/0s8/8/z//hz/Dn+HCH0n92fj3mluD4oRNcrXclbCTcHoM4KaeW9TOd012dzSPF8M3umnl9iJl/zYc0EkXp+VHjM+jy3J+fd53dBWJ9nO9X6PAtLL9zvzwsStT6P+eY7+v8Y/xbKT+r/E/FT+OcC8+X03P2/gUSZW/frQ4zFze76ls/1OYf5Jev5MYf5HSFEtSK76088nPwiVGb9f/f5l/X/Y/zbv13//8TZm+75hSBR6/+TX5BfkF+QX5BfIISoL1BfoL5AfQH/j//H/+P/8f+IO+r/9o56e48ff14Mf571/GueD2+Xf4h6/v/J83fu/keQoj7/Hzw/Kfy57/x4x7dd/jzq+X/8Of4cf44/Rwhxfx7/v1f8fz7+JCN/ZdfnOXL6esl5fR5Botbnabx8735/XhDb4luf5+v3n+7+XxBvtcK7Ps+D+oq7/xfEtvjW52nX+Eatz4P/x//j//H/CFGt2A3VCp7/J78ofH5hl3OP4ifKL/4ugRKx/v+5y9Pu+YUgUev/P3721j2/EMS2+Nb/D+UnzS98/KbnJ+n4+s5PK+Ob9PsTtf4/+QX5BfkFQoj6Av4f/099gfoC9QX8P/4f/4/2ov4AS3yFHg=="},"done_t":{"ms":90,"z":"eNrtnM9rFVcUxxOkmi4eggpihQTqIgsJ0U0NcWEWbmIXzSItRiELoQkhIV1IICELNwEXhUcQCVgfLvpjYVNoqCag0FXjUikpdOV/kD9Cv3rhOM6vNzN3Zkze+xwej5n77vnOvHvfu/dz5l7OxsZH1lO2SfPNuXN2XPolnP6bZxXqV9o+ztz9R6336PEjjYHPTg3HvvSRKuS9lrxOff1n48IPx85eaeuuCqqmynKRY1tx3dXxS3fc8ejo6MzMzNp7uxcxV64Kqubqy1Hu6fq6Dae8tbW1n9lU2V3Fuad82c+//EYHucTtEnKUe0qTuk/Hx8f3C5kc7Q5D1t/fPzg4qG7S8dLSUjF9OcpdIpKSoIkvLy+7Cq3fd3WqXiumL0e5S8SdSvbd5RqNYJ2RkZGovqpF1aKFcpR7sKTx3tL17Wu2LYzVT28fEwmqxRYmtU+wf90/K6QfPY4tNH2JhPrXLKpfoH/t7995+mX9v+ofH+oZ36oen2uYX6qeH2uY3zHs4PBtPfxfqX4N/F/n+AD/1z8/Tk1N6St/f7vpP79LRFISNPHp6WmrMz8/78MncrdTyTr9VqtlhZubmz58JXc7lazTX1xctMLV1VUf/pe7nUrWmmhlZWVnZ+fug+dRPszF/yqRiKQkmIU/C/B/Lr4txv+dyufwP/wP/2MY/H+Q2yfpaX9Z4u5V3fiTLk58EWtDQ0MnTg/4z78SkVRQua+vT0Tqqn17fdqHH+TujiUoWac/OztrdXZ3d334R+52KtlYfR9+i9UPts/k5KRPfCH3aPtY/w5cvesfX0gk1L/EF8QXxBfEF8QXGPzfVc//WV9gfYH1BdYX4H/4H/6H/+F/7NDxf+haVeiz/x8+Z/8/+//Z/8/+f/gcPofPMax7+L9Tn//D//B/9vm9aj6piK/m5ua2t7ebzeaZK2ux+tn5X4USkZQEJavTiYkJq/Dojxf+z+clYiUSD64IvPrvtT//SyS4WjE2NmanzUd/+/O/RKxE4irR72p9fX1hYaGs/pWUBCUL/8P/8D/8j8H/8H/bp/1libP/n/iC+OJDs/f2Dg8P6z1JP1d8IRET1KkO9vb29KneL9+87x9fSMQEJa4xxyo8fPyPf3whEStxY1q6ft74IqTftn3y9m+ofbL0b97fT7B/iS+IL4gvMPgf/mf/P+sL8D/rC6wvsL4A/8P/8D8G/7fVJ/9/4RUB+Bw+Z/9/D/v/2f8Pn8Pn8DmGwf/16n/y/f8prwLjg1w0Xmkkz+LubkCV5ZLlWq5ysfHZ3VK6vps9C88vKZOv+7Jugig8P8o9JT/PrflV//ldIuTn2S+Un2dt/Vf/5/MSScrP4375nvyfwm+x+nn5P5d+AX7uYH2Rnj//O5EkuPUfH1IQt7rxrZ7xuYb5per5sYb5HcPg/4PcPgdt/3/e8SddnPgi1lz+f//5l/z/Kfz2afP/f3Hxhn98IZGk/P/EF8QXxBfEF8QXGPzfDc//WV9gfYH1BdYX4H/4H/6H/+F/7NDxf+haVeh39v5/+Pyw83nV86/bH14WPyTt///plyf+/CORTt3/H22fAnweap9g/5bF50n7/+Fz+Bw+h88x+P9w8X+nPv+H/+H/7PN71XxSEV9Zfp6T57/r8c7PI5Gk/Dyt3576P5+XiJWE8vO8/Pd/f/6XSHC1Ipif58eNx/78LxErCeXnKat/k/LzwP/wP/wP/2PwfzfzP/v/iS+IL2rjN0vnnqSfK754lwIlIf//V9cW/eMLiSTl/3/w81/+8YVErCSU/z9WP298EdJv2z55+zfUPln6N+/vJyn/P/EF8QXxBQb/w/+dYawvwP+sL7C+wPoC6wvwP/yPdZu9BcMtRuw="},"idle":{"ms":140,"z":"eNrt3DFu2zAUBuBcwBfokDW+gAEjYzIFvULhMUtnAz5AT9ChGTJnjteepIfIJfoQwoJgp7REijFqf/8Q2BL5xEgw+TGAc3Ull5vZbPYlm2hQUHO1Wt3f3w/pngYQjaPLkGulxun17e3t4+Pjj/f8PEg6Hg2iWWqfhpSvH8NIlbfb7dvgRON0ldQ988vO5/N4Map4d4noGN0zdymdfXh4eCtKdOxG+GEWi0X8XK/XZfWjY1fkw6QnG0+trH507IpcSP14e/j6w4PF4+/OHj14wvtzfX19c3MzVf0oFQW74pvNJjV4fX2trx9F0tsom+aEfpvlclnz+Yru/SOz9/SP3N3d1cwP0X2vfv/+PD8/189vUaR/f/rPd6r5ee/5fub60np9/IT1XUT4n//5n//5n//5n//5X0TOz/+/dmnn/yjezv/d+Pmf//mf//mf//mf/0X4n//5n//5n//5n//5X0T4n//5n//5n//5n//5X0T4n//5n//5n//5n//5X0ROmLE+L7vEf72/8P1i+wv7C/sL+wv7C/sL+wsR/ud//ud//ud//ud//ud/ueT83qXpJdr5v934+Z//+Z//+Z//+Z//+V/4n//5n//5n//5n//5n//5X/if//mf//mf//mf//mf/0X4n//5n//5n//5n//5n/9Fzt7nrcdf8/3fgZ/fUcXHzj/d+Pmcz/mcz/mcz/mcz0X4v6n/0xSRScHf/6NXGG/43DLK/32gjp2f83juE7d4fcngtltfatbH/PqSztas7/lLpFOV/s/UT0+20leZ/cv51S/w/9jxj/X/Se5P8uFU9f/l/5eXl/r6UeSE/o8GNfPDYf3+/Xl6eqqf36JIxv+TzM8Z/7deXwrWx2T46FJm9SHru8iE+dNLOz9PW3zP/42Kp0x7f/if//mf//mf//mf//lf+J//+Z//+Z//+Z//+Z//+V/4n//5n//5n//5n//5n/9F+J//+Z//+Z//+Z//+Z//Rfj/7P0/8BLFfY/OPwX//7Pd/Gl/YX9hf2F/YX9hf2F/YX8h/M///M///M///M///M///C+ZfO9lwrLfdumuMvnIWxdPmfb+fN2l3QOtKX50fhg7fv7nf/7nf/7nf/7nf+F//ud//ud//ud//ud//ud/4X/+53/+53/+53/+53/+53/hf/7nf/7nf/7nf/7nf/7n/8vMX/0ZDJk="},"idle_t":{"ms":140,"z":"eNrt3DFOHDEUBmAusBdIQUMBF1hpRQkVyhUiSprUK3GAnCAFFNTU0OYkOQSHSJ6wsCbLxsyMbVYL3yvQsmv/Yzxgf440ubn5pw5aV2T+OTrKr5tf4h3yu87PbmuxWHwpVjSYkXl5eXl+fj6mexpANI4uY66VGqfXp6enV1dXP57r56tK70eDaJbapyGV82MYKfnx8fFpdEXjdJXUvfDDnpycxItJ4fkS0TG6F2YpfXpxcfE0q6JjHuHWWi6X8XW9Xs/Lj445ZGulOxt3bV5+dMwhnyQ/vn39euubs8efP33zzR3Oz+Hh4fHxcav8iIrAHH59fZ0aPDw81OdHSPo2YtOaMGyzWq1q/r6i+/CdxXMN3zk7O6tZH6L7Rv5wfu7u7urXtwgZzs/w/rZanzfu73vuL733x3fY39VHqhv+53/+53/+53/+53/+53/F//zP/8/rw9Sffcb6FuH9/J/Hz//8z//8z//8z//8r/if//mf//mf//mf//mf/xX/t83fuNbe5fM///M///M///M///O/4n/+53/+53/+53/+53/+53/F//y/qzvY9RJ7fb7wfLHzhfOF84XzhfOF84XzheJ//ud//ud//ud//ud//ud//u+Rvy/P//56qX7zsxHe9g5uHT//8z//8z//8z//8z//K/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7n/6l07OTzVvlbfd5wfjr5vGZsI/9+J4VPXX/y+Pmcz/mcz/mcz/mczxX/839X/6clolAz/v0/eoXxxq8tk/w/BOrU9bmM5yFxZ+8vBdzm/aVmfyzvL+nTmv29fIn0UaX/C/npzlb6qnB++Xj5M/w/dfxT/b+T+Uk+bJX/P//f39/X50fIDv0fDWrWh9f5w/m5vb2tX98ipOD/Jutzwf+995cZ+2MyfHSZZ/Ux+7vi/4b+/z2ofv6P8H7+T+Gd/D+cH/7nf/7nf/7nf/7nf/5X/M///M///M///M///M///K/21P+dns/N/m/4fDH/8z//8z//8z//8z//K/7nf/7nf/7nf/7nf/7nf/5X/M//H8D/Iy8xu++b68+M//+z3/rpfOF84XzhfOF84XzhfOF8wf/8z//8z//8z//8z//8z//8z/+F+j6ohs/nfnupfJWD1s//boS3nZ88/uH81M/215fq90tSE/7m+jB1/PzP//zP//zP//zP/4r/+Z//+Z//+Z//+Z//+Z//Ff/zP//zP//zP//zP//zP/8r/ud//ud//ud//ud//ud//v+c9Rc0K84v"},"error":{"ms":60,"z":"eNrtmr1qG0EUhYUxxhiMC2NwtSntTkUaIxd2Z6vKI6QzSZXGBj9A+qA08o/AVSBdFFLpQVLnAfwQycEXlmW0O9qZ2VGk5DuIsFnNHA2z2bvf3pxeL4t+z3r5lNvcPuu7/vba29job22dbW/XfvSVBoQu4NXm5q+ieDo4eLOzo+OFgzVMgzVl4WBJq9JgOx4MBldXVx9f9HlOdl4DNMzGa6Km+/21DHOeTqfPraXB9is23bPbb3d3dRBkXv6EJmq654rYt8Ph8DlKmliusFaf9vf1583NTZy/JpYmtbIrq6tm43Vczi2Pa0+aNLE0qdW3w8Oqf+ng+NSeLP3NpKV/rU/TyQj/rOuP2/95/6Iojo6Omvanvcx/dnpaVO6y29tb+3Y8Hqf7y8SOZWv+1QHfLy9T/CeTSfWvuy83WvXMl4uLlPtrNBrN+1f3J70+TO7unP2pXt9O6tvr4+OiuYpmrc9LeL7kfj4u4fmOEPwP/8P/8H9W/g+l0Aj+D6LoOP5v/xYQ7Z91/aH73+QvqBO6p/O/+Qs4m94C0v2dtwCBtAfjQ/31EuFsr+PvYHzo/aWXCMe/uj8C+PT6MP+WZNdX6N5VfXOuL/wP/yOEupVuf1UVzyeiPmjKh709K24Lp9sCNFhT2vyWDY6rz23qrZaR8nyx6f5qnPJ89Fds+zbx+W4rbHo4pvO/5xFpVzax/1z+81joH9c/D/KP6P+vzvq72v+yP1y7P6H8/L7fbyL/dH9////6/Dxr///d2VnW/n96fVjY/0+vb/7+f9b6vITnS+7n4xKe7wgh+B/+h/+z8n9c/zmUz0P75xH+Qf3/VVt/V/svqBO6p/O/+efr/8s/a/9fLxFZ+/96icja/1d98PT/u6pvTf1/+B/+R6sv8j9rsTnkfxyR/yH/3yP/T/6f/D/5f/I/CMH/8D/8D/+T/yf/T/6f/D/5f/gfIbT+Iv/jiPwP+f8e+X/y/+T/yf+T/0EIwf/wP/xP/p/8P/l/8v/k/+F/hLwi/7MWm0P+xxH5n5XK/wS1oOPyP+1b6In5nIUnU/I5mdYfsf+1/tYi7iT/L5Mm+P/59JTuLxMP/J+cnKT4a7rTop/3T7m/5v2r+zN7fEyvDzJp+i+ArupbE/z3yP+E8z/5HwT/w//wP/wP/8P/8D/8D//D//A/Qv+5yP84Iv+zUvmfCP6My7e05+fofE5L/l+p9Xe1/8aHneT/ZdLE/z8eHtL9ZfKv8v/X+/v0+iATD/93Ut88/E/+568/3xFC8D/8D//D//A//A//w//wP1pH/QGGmmkC"},"surprise":{"ms":80,"z":"eNrt3bFq21AYBtCU0oYOIku2ggtdPCZbjJcuWUyHvkMHr5kM3rrkCbKYhGzZstTQqXvfxg+R/s2Fi5AcybFlN8HnIwRHvvezItnXB2HwwYHsb968P3pbfHp3fLL0J+6KAc/tjFnHX38WpxeHH7+0To8BMSwGx5SY2Foee3V09iPdHg6H4/H48jFXtaTtMSCGpfExMaY398dupOb5fL5YOTE4PUqa3vDPfvj8LW48qzw/REyM6Q2HNN07Go0WayUm5j1cmjhN8XsymazXHxNzydKkMxtnrTwr39u6MSbmEv0vqr/X6/X7/a76oyoK85jpdJoG3N7/qfevntQfJenPqP33dC2K8pjBYLBJf0wvbykeU+nf5PVV7y8fn5u7X5uvD1FSPj7l89vV+lY5vztbn3fw/rLt98cdvL+LCP/zP//zv37+53/+53+RyMNv/f+zf9vrQ+v+8z//vxb/VwY0bGzoT/jptj8TKONtNpt11R9VmXDlA3j+/Xrz/ih56glQ71/j/Fb6m4/PGv6vHJ/m81tJfZ+fen4uJW7r66u5v/X1te31YdvrG//zv4i4/s///M///M///M///C+u/+t3/Z//+Z//+Z//+Z//+V/4n//5n//5n//5n//5n//5X/iZ//mf//mf//mf//mf/0Vkf+Lz//zP//zP//zP//wv4vq86/+u//M///M///M///O/CJ/zP//zP//zP//zP//zv4i83vj8D//vs//176bf938tfP/Xyuub7//ifxHhf/7nf37mf/7nf/7nf+k2fwFse75q"},"jump":{"ms":70,"z":"eNrtnD1Sg0AYhrewsKGwsLGgsYiljTNMWmec4RKWaawzwwE8gRZ2Nh7AXCDn8BC5hG/YDENCsgSWBZI8z2T8Cfu9QTDL8wloDFww0ZW5uzYP0f6HFmlAU1T1+WheY/N0U1+uARqmwSpRYS1aq7d7++V0Op3NZu85HxXs8xqgYZtaFarcjVYjT14sFquj0eDNq+Tlrh/2+VafG4UXL7FOULljk+ZL0zRdtUKFxRruR7vJmPl83i5fhUXIfvI9q71WrioW1j6pwiKE/FHlx3E8mUy6yleUAosxWZbZAV/Ln2r+8dh8hdhvFbt+y0ZReUySJD75Ki8/E+Xs5Pu8v6r5W9vn99t/flBIefts7d+O5red/dvf/NzD8SX08bGH4zsAXLL//70EnN8Ubh8h5mcbW/4Y4vhyaOW78v9D+fg/fo7/4//4P/6P/wPg5/g5fo6fk4+f4+f4OX4OgD8Pe32Lw8/95ze3n3vOz24/PxV/PpR/sv48oL81zW/qb43yj/G3bvNDb5/a/dvUn6v71/372SJ/sP40dH8d+vo9/Bl/BsDP8XP8HD/Hz/Fz/Bw/x88BAP+v9XPD9S1c34L/4//4P/6P/+P/ANAvbj/3D3f4uef8U+vn4z+/4M7n/9vQX9Bf0F/QX9Bf0F8AwBn7f7s1d/t/n9tnhOdHhj2+0L9w/y/53P/L/b/c/0v/AoD/n7H/j7O/GHD+pL+4sP6iy78/kz++/sL//AX9Bf0F/QX9BQAMPz/g//g/5xfI5/wC/o//4/8AgP/j//g//o//4//4P/6P/wMA/o//4//4M/6P/+P/+D/+Dz3yD+Q6Slk="},"question":{"ms":110,"z":"eNrt3L9u2lAUB2DvEcqYjUpZ2NqVsnRmah4gM2uGCoktS1+gXbzwBh2ClKXZ8zY8RHLIrSzUYMfBvlapvp8Y+HPP8Y0trj9bKEXRf54edo9MqTrn28QA/XNPvmXOz4oPF8Wny8OP+CgGvHf+UXV3W9xcFV8+1pbvTyCGxeAoicI3E7O6vf7zfDabLRaL7y/5+Srp/RgQw9L4KIzy5sQ0UufNZrNtnRictpLKG/7Yr593T97VvNpEFEZ5wy5Nn87n8+1RicJqhgcThymyXC7/KqwGNL8ZhVWTg0lHNo7acf2jMF7++DYZj8eZ+pdlmZ6vVqve+6/X6/0Bo9HotPo37J84IpPJpK5/y9Qd39hWGvD4u+zev1peUmIv7Y+ZTqe5+7/+frVM3fer2j/3v8pM60M6vrnXt9zr8wDnl9znx77O7yL8z//8z//8z//8z//8z/8iri/+m+uLHOtDL+tb3fz5n//5n//5n//5n/+F//mf//mf//mf//mf//mf/0VcX+RbH0799z918+d//ud//ud//ud/Ef7nf/7nf/7nf/7nf/7nfxE+H8DnuZv7/Q//d/d/R5+86c+OPuyx/3H+b5l/1v/d9w//8z//878I//M//7v/7/6/+//8z//8z//C53w+fPz/T/7nf/7nf/7nf/4X4X/+53/+53/+53/+53/+F+F//ud//ud//ud//ud//hfhf/7nf/7nf/7nf/7nf/6XU8kz6WMtGQ=="},"dizzy":{"ms":90,"z":"eNrtnDGu4jAURb0BNjAFLdSRkBAtFZsgSkOTGokFzAaYhiK01NDOmljE/KdvybJM4v8SJ4hJzi1QMPbFsRXn2HmOMePRv78GtdJsNvsVlWTo4Lnf77fbraa4rYBkliKa/7KZ7fFmszkcDr+/9edFNl0ySDab31Yp7i/VsM6Px+OplmS2/2KLR052uVzKQStz9xdSUIpHWsn+utvtnp0kBV0Na7VareTzeDx285eCzqRWtmel1/xS7tcfE6WgM1H6+w7uuDYxxd//bEr8zPq7pg66sjYx4j+fzxeLRa2/Xs5frMTQmZ9OJ5vhfr+n+4uJ/Sq29pr186zX6xR/Ke6nzL4V+KdcX6/+fvvcbrf08UFM/Pbx+7ev8S3o37eNz2+4vwx9f3zD/R1NU9A1/A//w/9v5n/9FKAz3yoROsVfMwXo5t90Ln3Vv6/2F6LL87wX/pfPpinA5XJJ9xeTyBTger2m+JdlGTRj4H8+n1Our6IoXrvJtU9VVenjQ9A+rn+zLOtrfGuaAsD/8D9iAoLgf/h/Uvz/Y+I0+X/o+sP/8D/8D/8jhEY2/YH/4X/ifzSr6BOP/0lsf+J/iP8h/gf+R4gHBKz/w//wv5JvlfDZgW9bwXNnfyX8f2D9WwX/R/wtHBpF/JKGz/M8b1r5T/d/Xdn2M5RlmeIfPDiwF7KfUhRFyvUVPDgI4F9OLX18qKqqCf77Gt+yLGuCf/gf/kfQNYL/4X/4f+L8r4/8T+T/xPaH/+F/+B/+R4gJCPwP/8P/er7VL0Hz/h/ifwzxP8T/wP/wP0JMf+B/+H8s+3/N8O//iSey/5f9v+z/Zf8v/I8QDwhY/4f/4f8x8b/h/T+DvX8J/of/4X/4H0HXCP6H/+F/Jd9q4H+a8T+tHmQQ/0P8D/E/8D/8j5iAIPgf/v8v9v9qlqOfvP+n7/qz/9ew/5f9v/A/QmiM0x/4H/7/fP43w7//J76KDv/D//A//A//o5HpC/zg61c="}}/*MASCOTTE_FINE*/;
+const STRIP_Y = 27;   // righe 27-31: striscia informativa sotto la mascotte
+const TIRED_MOODS = ["working", "think", "done", "idle"];
+let MASCOT = null;
+function b64Dec(s) { const bin = atob(s); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+async function loadMascot() {
+  const out = {};
+  for (const [key, a] of Object.entries(MASCOT_ASSETS)) {
+    const raw = new Uint8Array(await new Response(new Blob([b64Dec(a.z)]).stream()
+      .pipeThrough(new DecompressionStream("deflate"))).arrayBuffer());
+    const frames = []; for (let i = 0; i < raw.length; i += W * H * 3) frames.push(raw.slice(i, i + W * H * 3));
+    out[key] = { frames, ms: a.ms };
   }
+  MASCOT = Object.keys(out).length ? out : null;
+  return MASCOT;
 }
-function blendDisc(img, cx, cy, r, color) {
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const v = Math.max(0, Math.min(1, r - Math.hypot(x - cx, y - cy) + 0.5));
-    if (v > 0) { const b = get(img, x, y); put(img, x, y, [0, 1, 2].map(i => Math.min(255, Math.trunc(b[i] * (1 - v) + color[i] * v)))); }
-  }
-}
-const pyRound = x => { const f = Math.floor(x), d = x - f; return d > 0.5 ? f + 1 : d < 0.5 ? f : (f % 2 === 0 ? f : f + 1); };
-function drawMascot(img, color, halo, lx = 0, ly = 0, op = 1, hands = [[0, 0], [0, 0]], bob = 0, wide = false) {
-  const cy = M_CY + bob;
-  if (halo > 0) drawOrb(img, 0, color, M_CX, cy, [M_R + 1.9, pyRound(halo * 4) / 4]);
-  const q = v => Math.floor(v * 64 + 0.5) / 64;   // stessa quantizzazione dello script del PC
-  blendDisc(img, 3.0 + q(hands[0][0]), cy + 7 + q(hands[0][1]), 2.3, BALL);
-  blendDisc(img, 28.0 + q(hands[1][0]), cy + 7 + q(hands[1][1]), 2.3, BALL);
-  blendDisc(img, M_CX, cy, M_R, BALL);
-  const ew = wide ? 4 : 3, eh = wide ? 9 : 7;
-  const h = Math.max(1, pyRound(eh * op)), top = Math.trunc(cy - 4) + Math.floor((7 - h) / 2) + ly;
-  for (const ex of [11, 18]) {
-    const x0 = ex + Math.floor((3 - ew) / 2) + lx;
-    for (let dx = 0; dx < ew; dx++) for (let dy = 0; dy < h; dy++) put(img, x0 + dx, top + dy, BLACK);
-  }
-}
-const LOOK_WORK = [[0,0,1],[-1,0,1],[-2,0,1],[-2,0,1],[-1,0,1],[0,0,1],[0,0,0],[0,0,1],[1,0,1],[2,-1,1],[2,-1,1],[1,0,1]];
-const JUMP = [0, 0, -1, -3, -4, -4, -3, -1, 0, 0, 0, 0];
-function screenMascot(m, speed = 1, event = null, tired = null, tiredPercent = 80) {
+function screenMascot(m, speed = 1, event = null, tired = null, tiredPercent = 80, stuckRows = null) {
+  if (!MASCOT) return null;
   speed = Math.max(0.25, speed || 1);
   if (tired === null) tired = m.five.pct !== null && m.five.pct !== undefined && m.five.pct >= tiredPercent;
-  const cap = tired ? 0.55 : 1;
-  const frames = [];
-  const add = (color, halo, lx = 0, ly = 0, op = 1, hands = [[0, 0], [0, 0]], bob = 0, wide = false) => {
-    const img = newFrame(); drawMascot(img, color, halo, lx, ly, wide ? op : Math.min(op, cap), hands, bob, wide); frames.push(img);
-  };
-  let mood, ms;
-  if (event === "surprise") {
-    mood = "surprise"; ms = 80;
-    for (let i = 0; i < 12; i++) { const wide = i >= 2 && i <= 8, sp = wide ? 1 : 0;
-      add(BLUE, 0.85, 0, 0, 1, [[-sp, -3 * sp], [sp, -3 * sp]], 0, wide); }
-  } else if (event === "jump") {
-    mood = "jump"; ms = 70;
-    JUMP.forEach((b, i) => { const up = b < -1 ? -4 : 0; add(GREEN, 0.85, 0, 0, i === 8 ? 0.4 : 1, [[0, up], [0, up]], b); });
-  } else if (m.count("e")) {
-    mood = "error"; ms = 60;
-    for (let i = 0; i < 12; i++) { const sh = i < 8 ? [-1, 1][i % 2] : 0;
-      add(RED, i % 4 < 2 ? 0.9 : 0.5, sh, 0, 1, [[sh, 0], [sh, 0]]); }
-  } else if (m.count("d")) {
-    mood = "done"; ms = 80; const n = 16;
-    for (let i = 0; i < n; i++) { const t = i / n * 2 * Math.PI, up = -6 - 2 * Math.sin(t * 2), wave = 0.6 * Math.sin(t * 2);
-      const op = i >= 4 && i <= 11 ? 0.35 : 1;
-      add(BLUE, 0.65 + 0.2 * Math.sin(t), 0, op < 1 ? -1 : 0, op, [[wave, up], [-wave, up]], i % 4 < 2 ? -1 : 0); }
-  } else if (m.count("w")) {
-    mood = "working"; ms = 75; const n = LOOK_WORK.length * 2;
-    for (let i = 0; i < n; i++) { const [lx, ly, op] = LOOK_WORK[Math.floor(i / 2)], t = i / n * 2 * Math.PI;
-      add(GREEN, 0.65 + 0.2 * Math.sin(t), lx, ly, op, [[0, -3 * Math.max(0, Math.sin(t * 3))], [0, -3 * Math.max(0, -Math.sin(t * 3))]]); }
-  } else {
-    mood = "idle"; ms = 160; const n = 16;
-    for (let i = 0; i < n; i++) { const t = i / n * 2 * Math.PI;
-      add(WHITE, 0.4 + 0.1 * Math.sin(t), 0, 1, 0, [[0, 1], [0, 1]], Math.floor(i / 4) % 2); }
-  }
-  return { name: "mascot_" + mood + (tired ? "_stanca" : ""), frames, ms: Math.max(20, Math.trunc(ms / speed)) };
+  let mood;
+  if (event === "surprise" || event === "jump") mood = event;
+  else if (m.count("e")) mood = "error";
+  else if (m.count("d")) mood = "done";
+  else if (m.count("w")) mood = m.rows.filter(r => r.code === "w").every(r => r.t) ? "think" : "working";
+  else mood = "idle";
+  tired = !!tired && TIRED_MOODS.includes(mood);
+  const a = MASCOT[mood + (tired ? "_t" : "")];
+  return { name: "mascot_" + mood + (tired ? "_stanca" : ""), frames: a.frames, ms: Math.max(20, Math.trunc(a.ms / speed)) };
 }
+function renderCcamText() { const img = newFrame(); drawCentered(img, 8, "CCAM", RED); drawCentered(img, 18, "OFF", GRAY); return img; }
+function screenCcamDown() { return { name: "ccam_down", frames: [renderCcamText()], ms: 0 }; }
+
+// --- striscia informativa (stessa logica del PC) ---
+function stripClear(img) { rect(img, 0, STRIP_Y, 31, 31, BLACK, true); }
+function stripText(img, text, color) { stripClear(img); drawCentered(img, STRIP_Y, text, color); }
+function stripCounts(img, m) {
+  stripClear(img);
+  const e = m.count("e");
+  const groups = [[m.count("u"), YELLOW], [m.count("w"), GREEN], [m.count("d"), BLUE], e ? [e, RED] : [m.idle, GRAY]];
+  let x = 0;
+  for (const [n, c] of groups) {
+    const col = n ? c : dim(c, 0.3);
+    rect(img, x, STRIP_Y + 1, x + 1, STRIP_Y + 3, col, true);
+    drawText(img, x + 3, STRIP_Y, String(Math.min(n, 9)), col);
+    x += 8;
+  }
+}
+function stripLimits(img, m) {
+  stripClear(img);
+  const col = p => { const c = p < 50 ? GREEN : p < 80 ? YELLOW : RED; return m.limStale ? dim(c, 0.35) : c; };
+  for (const [x0, xEnd, label, lim] of [[0, 14, "5H", m.five], [17, 31, "7G", m.seven]]) {
+    drawText(img, x0, STRIP_Y, label, WHITE);
+    if (lim.pct === null || lim.pct === undefined) drawRight(img, xEnd, STRIP_Y, "?", GRAY);
+    else { const p = Math.max(0, Math.min(100, lim.pct)); drawRight(img, xEnd, STRIP_Y, String(Math.round(p)), col(p)); }
+  }
+}
+function stripSession(img, r, now) {
+  stripClear(img);
+  const c = COLOR[r.code];
+  drawText(img, 0, STRIP_Y, r.label, WHITE);
+  rect(img, 13, STRIP_Y, 15, STRIP_Y + 4, c, true);
+  const t = (r.code === "u" || r.code === "d" || r.code === "w") && r.t ? fmtMinutes((now - r.t) / 60) : "";
+  if (t) drawRight(img, 31, STRIP_Y, t, c);
+}
+function stripSlides(m, now) {
+  if (!m.ccam) return [["ccam", img => stripText(img, "CCAM OFF", RED)], ["limiti", img => stripLimits(img, m)]];
+  return [["conteggi", img => stripCounts(img, m)], ["limiti", img => stripLimits(img, m)],
+          ...m.rows.map(r => ["s_" + r.label, img => stripSession(img, r, now)])];
+}
+function withStrip(mascot, key, draw) {
+  return { name: mascot.name + "|" + key, ms: mascot.ms,
+           frames: mascot.frames.map(f => { const img = new Uint8Array(f); draw(img); return img; }) };
+}
+function dizzyMascot() { return { name: "mascot_dizzy", frames: MASCOT.dizzy.frames, ms: MASCOT.dizzy.ms }; }
 // reazioni: confronta gli stati con quelli ricevuti prima (le sessioni ferme non arrivano: contano come ferme)
 function detectEvents(prev, m) {
   if (!prev) return null;
@@ -349,15 +366,13 @@ function detectEvents(prev, m) {
 }
 
 function buildRotation(m, now, opts) {
-  const pages = [];
-  if (m.ccam) {
-    pages.push(screenSummary(m));
-    if (opts.mascot) pages.push(screenMascot(m, opts.speed, null, null, opts.tiredPercent));
-    pages.push(...screenDetails(m, now));
-  } else {
-    const img = newFrame(); drawCentered(img, 8, "CCAM", RED); drawCentered(img, 18, "OFF", GRAY);
-    pages.push({ name: "ccam_down", frames: [img], ms: 0 });
+  if (opts.mascot && MASCOT) {
+    const mascot = m.ccam ? screenMascot(m, opts.speed, opts.event || null, null, opts.tiredPercent) : dizzyMascot();
+    return stripSlides(m, now).map(([key, draw]) => withStrip(mascot, key, draw));
   }
+  const pages = [];
+  if (m.ccam) { pages.push(screenSummary(m)); pages.push(...screenDetails(m, now)); }
+  else pages.push(screenCcamDown());
   pages.push(screenLimits(m, now));
   return pages;
 }
@@ -445,7 +460,19 @@ const cmdPlan = bytes => ({ windows: [new Uint8Array(bytes)], ackFinal: false })
 const brightnessPlan = level => cmdPlan([5, 0, 4, 0x80, Math.max(0, Math.min(100, level | 0))]);
 const powerPlan = on => cmdPlan([5, 0, 7, 1, on ? 1 : 0]);
 function deviceInfoCmd(d) { return new Uint8Array([8, 0, 1, 0x80, d.getHours(), d.getMinutes(), d.getSeconds(), 0]); }
-function screenPlan(sc) { return imagePlan(encodeGif(sc.frames, sc.ms || 600), true); }
+// rotazione in senso orario: 0, 90, 180, 270 (-90 = 270)
+function rotateFrame(f, degrees) {
+  const d = ((degrees % 360) + 360) % 360; if (!d) return f;
+  const o = newFrame();
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const [nx, ny] = d === 90 ? [W - 1 - y, x] : d === 180 ? [W - 1 - x, H - 1 - y] : [y, H - 1 - x];
+    put(o, nx, ny, get(f, x, y));
+  }
+  return o;
+}
+function screenPlan(sc, rotation = 0) {
+  return imagePlan(encodeGif(sc.frames.map(f => rotateFrame(f, rotation)), sc.ms || 600), true);
+}
 function ackCode(data) { // data: Uint8Array dalla notifica
   if (data.length > 4 && data[0] === 0x05) { if (data[4] === 0 || data[4] === 1) return "window"; if (data[4] === 3) return "all"; }
   return null;
@@ -477,7 +504,7 @@ async function decryptState(body, pairing) {
 const $ = id => document.getElementById(id);
 const DEFAULTS = { pair: "", server: "https://ntfy.sh", rotate: 15, speed: 1, mascot: true, brightness: 35,
                    schedOn: false, days: [1, 2, 3, 4, 5, 6, 0], on: "09:00", off: "23:00", blinkMs: 600,
-                   staleMinutes: 25, eventSeconds: 8, tiredPercent: 80 };
+                   staleMinutes: 25, eventSeconds: 8, tiredPercent: 80, rotation: -90, stripSeconds: 8 };
 const store = {
   load() { try { return Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem("pannello_casa") || "{}")); }
            catch { return Object.assign({}, DEFAULTS); } },
@@ -505,8 +532,8 @@ if (location.hash.length > 1) {
 // ---- impostazioni ----
 const DAY_NAMES = [["L", 1], ["M", 2], ["M", 3], ["G", 4], ["V", 5], ["S", 6], ["D", 0]];
 function fillSettings() {
-  $("pair").value = cfg.pair; $("server").value = cfg.server; $("rotate").value = cfg.rotate;
-  $("speed").value = cfg.speed; $("mascot").checked = cfg.mascot; $("schedOn").checked = cfg.schedOn;
+  $("pair").value = cfg.pair; $("server").value = cfg.server; $("rotate").value = cfg.stripSeconds;
+  $("speed").value = cfg.speed; $("mascot").checked = cfg.mascot; $("rotation").value = String(cfg.rotation); $("schedOn").checked = cfg.schedOn;
   $("tOn").value = cfg.on; $("tOff").value = cfg.off; $("bright").value = cfg.brightness;
   $("brightVal").textContent = cfg.brightness;
   $("days").innerHTML = DAY_NAMES.map(([n, d]) =>
@@ -518,8 +545,8 @@ $("btnSave").onclick = () => {
   if (pair && !parsePairing(pair)) { warn("Codice di abbinamento non valido: copialo intero dall'output di --pair."); return; }
   cfg = Object.assign(cfg, {
     pair, server: ($("server").value.trim() || DEFAULTS.server).replace(/\/+$/, ""),
-    rotate: Math.max(5, +$("rotate").value || 15), speed: Math.max(0.25, +$("speed").value || 1),
-    mascot: $("mascot").checked, schedOn: $("schedOn").checked, on: $("tOn").value || "09:00",
+    stripSeconds: Math.max(3, +$("rotate").value || 8), speed: Math.max(0.25, +$("speed").value || 1),
+    mascot: $("mascot").checked, rotation: +$("rotation").value, schedOn: $("schedOn").checked, on: $("tOn").value || "09:00",
     off: $("tOff").value || "23:00",
     days: [...$("days").querySelectorAll("input:checked")].map(i => +i.value),
   });
@@ -691,6 +718,7 @@ function updateChips() {
 // ---- ciclo principale ----
 let lastSig = null, pageIdx = 0, lastRotate = Date.now(), lastMode = null;
 let prevStates = null, prevTs = 0, event = null, eventUntil = 0;
+const interval = () => cfg.mascot ? (cfg.stripSeconds || 8) : (cfg.rotate || 15);
 async function tick() {
   updateChips();
   const now = Date.now() / 1000;
@@ -703,8 +731,10 @@ async function tick() {
   if (!state) sc = screenWaiting();
   else if (dataAgeMin() > cfg.staleMinutes) {
     const m = model(state);
-    const pages = [screenPcOff(state.ts, now), screenLimits(m, now)];
-    if (Date.now() - lastRotate >= cfg.rotate * 1000) { pageIdx++; lastRotate = Date.now(); }
+    const pages = cfg.mascot && MASCOT
+      ? [withStrip(dizzyMascot(), "pc", img => stripText(img, "PC OFF", RED)), withStrip(dizzyMascot(), "limiti", img => stripLimits(img, m))]
+      : [screenPcOff(state.ts, now), screenLimits(m, now)];
+    if (Date.now() - lastRotate >= interval() * 1000) { pageIdx++; lastRotate = Date.now(); }
     sc = pages[pageIdx % pages.length];
   } else {
     const m = model(state);
@@ -713,21 +743,20 @@ async function tick() {
       prevStates = new Map(m.rows.map(r => [r.label, r.code])); prevTs = state.ts;
       if (ev && cfg.mascot) { event = ev; eventUntil = Date.now() + cfg.eventSeconds * 1000; log("Reazione mascotte: " + ev); }
     }
-    if (m.ccam && m.count("u") > 0) { sc = screenUrgent(m, now, cfg.blinkMs); mode = "urgent"; }
-    else if (event && Date.now() < eventUntil) { sc = screenMascot(m, cfg.speed, event, null, cfg.tiredPercent); mode = "event"; }
+    if (m.ccam && m.count("u") > 0) { sc = screenUrgent(m, now, cfg.blinkMs, cfg.mascot); mode = "urgent"; }
     else {
-      event = null;
-      const pages = buildRotation(m, now, { mascot: cfg.mascot, speed: cfg.speed, tiredPercent: cfg.tiredPercent });
-      if (lastMode === "urgent" || lastMode === "event") { pageIdx = 0; lastRotate = Date.now(); }
-      else if (Date.now() - lastRotate >= cfg.rotate * 1000) { pageIdx++; lastRotate = Date.now(); }
+      if (event && Date.now() >= eventUntil) event = null;
+      const pages = buildRotation(m, now, { mascot: cfg.mascot, speed: cfg.speed, tiredPercent: cfg.tiredPercent, event });
+      if (lastMode === "urgent") { pageIdx = 0; lastRotate = Date.now(); }
+      else if (Date.now() - lastRotate >= interval() * 1000) { pageIdx++; lastRotate = Date.now(); }
       sc = pages[pageIdx % pages.length];
     }
   }
   lastMode = mode;
-  const sig = signature(sc);
+  const sig = signature(sc) + "|r" + cfg.rotation;
   if (sig !== (preview.sig || "")) { sc.sig = sig; setPreview(sc); }
   if (panel.connected && wantOn && sig !== lastSig && !panel.busy) {
-    try { await panel.run(screenPlan(sc)); lastSig = sig; }
+    try { await panel.run(screenPlan(sc, cfg.rotation)); lastSig = sig; }
     catch (e) { log("Invio schermata: " + e.message); }
   }
 }
@@ -735,7 +764,8 @@ async function tick() {
 fillSettings();
 startRelay();
 updateChips();
-setInterval(() => { tick().catch(e => log("Errore: " + e.message)); }, 2000);
+loadMascot().catch(e => log("Mascotte non disponibile: " + e.message))
+  .finally(() => setInterval(() => { tick().catch(e => log("Errore: " + e.message)); }, 2000));
 if (!navigator.bluetooth) warn("Web Bluetooth non disponibile: serve Chrome per Android e la pagina aperta da un indirizzo https.");
 </script>
 </body>
